@@ -117,7 +117,7 @@ export function TransparencyLedger() {
         <h2 id="ledger-stream-title">The Transparency Ledger</h2>
         <p>Newest entries appear first. An entry cannot be silently edited or deleted; a correction must become another visible entry that points back to the record it corrects.</p>
       </header>
-      <ol>
+      <ol tabIndex={0} aria-label="Scrollable Transparency Ledger entries">
         {state.entries.map((entry) => <li key={entry.id}>
           <div className="ledger-sequence"><span>Sequence</span><strong>{String(entry.sequence).padStart(3, "0")}</strong></div>
           <article>
@@ -143,4 +143,3 @@ export function TransparencyLedger() {
     </section>
   </>;
 }
-
