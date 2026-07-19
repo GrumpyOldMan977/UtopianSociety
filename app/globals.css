@@ -808,6 +808,8 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.32;ba
 @media(max-width:620px){.threshold-map li{width:45%}.threshold-map li:nth-child(1){left:2%}.threshold-map li:nth-child(2){right:2%}.threshold-map li:nth-child(3){left:2%}.threshold-map li:nth-child(4){right:2%}.threshold-map .threshold-arches{inset:50px 38px 82px}.threshold-route-guide span{font-size:8px}}
 
 /* Gateway artwork carries the symbolism; the Codex progression reads horizontally. */
+.oath-issuance-error{max-width:880px;box-sizing:border-box;margin:24px auto 0}
+.ledger-preview>p a{color:#e4cf9c;border-bottom:1px solid rgba(228,207,156,.45)}
 .threshold-map{background:linear-gradient(180deg,rgba(5,27,22,.06) 0%,rgba(5,27,22,.2) 48%,rgba(5,27,22,.94) 85%),url('/images/circles/immigration-civic-gateway-v1.png') center/cover no-repeat}
 .threshold-map:before,.threshold-map:after,.threshold-map .threshold-arches,.threshold-route-guide{display:none}
 .threshold-map ol{position:absolute;left:22px;right:22px;bottom:58px;inset-block-start:auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}

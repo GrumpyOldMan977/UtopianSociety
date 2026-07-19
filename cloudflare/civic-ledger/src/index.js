@@ -7,6 +7,29 @@ const PUBLIC_ORIGINS = new Set([
 ]);
 
 const encoder = new TextEncoder();
+const ASSESSMENT_VERSION = "immigration-v1";
+const ASSESSMENT_QUESTION_COUNT = 100;
+const ASSESSMENT_PASSING_SCORE = 90;
+const CERTIFICATE_COLLISION_RETRIES = 6;
+const UTOPIAN_EPOCH_UTC = Date.UTC(2026, 2, 20);
+const DAY_IN_MS = 86_400_000;
+const DEEP_BRIDGE_REMAINDERS = new Set([1, 5, 9, 13, 17, 22, 26, 30]);
+const UTOPIAN_MONTHS = [
+  "Florent", "Verdara", "Aureleth", "Ember", "Solvane", "Aura", "Branna",
+  "Gleirn", "Fallon", "Dusken", "Nocturne", "Caldris", "Iskareth",
+];
+const UTOPIAN_WEEKDAYS = [
+  "Convergeday", "Kineticday", "Conceptday", "Minday", "Emoday", "Percepday", "Spiraday",
+];
+
+class ClientError extends Error {
+  constructor(message, status = 400, code = "invalid_request") {
+    super(message);
+    this.name = "ClientError";
+    this.status = status;
+    this.code = code;
+  }
+}
 
 function corsHeaders(request) {
   const origin = request.headers.get("Origin");
@@ -29,9 +52,104 @@ function json(request, value, init = {}) {
 
 function cleanText(value, maxLength, required = true) {
   const result = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
-  if (required && !result) throw new Error("A required text field is missing.");
-  if (result.length > maxLength) throw new Error(`A text field exceeds ${maxLength} characters.`);
+  if (required && !result) throw new ClientError("A required text field is missing.");
+  if (result.length > maxLength) throw new ClientError(`A text field exceeds ${maxLength} characters.`);
   return result;
+}
+
+function requirePublicOrigin(request) {
+  const origin = request.headers.get("Origin");
+  if (!origin || !PUBLIC_ORIGINS.has(origin)) {
+    throw new ClientError("Certificate issuance is only available through the civic portal.", 403, "origin_not_allowed");
+  }
+}
+
+async function readJson(request, maxBytes = 20_000) {
+  const declaredLength = Number(request.headers.get("Content-Length") || 0);
+  if (declaredLength > maxBytes) throw new ClientError("The request is too large.", 413, "request_too_large");
+  const body = await request.text();
+  if (encoder.encode(body).byteLength > maxBytes) throw new ClientError("The request is too large.", 413, "request_too_large");
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new ClientError("Invalid JSON request.");
+  }
+}
+
+function isDeepBridgeYear(year) {
+  return DEEP_BRIDGE_REMAINDERS.has(((year % 33) + 33) % 33);
+}
+
+function utopianYearLength(year) {
+  return isDeepBridgeYear(year) ? 366 : 365;
+}
+
+function formatUtopianDate(date) {
+  const target = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  if (target < UTOPIAN_EPOCH_UTC) return "The Founding Interval";
+  let year = 1;
+  let yearStart = UTOPIAN_EPOCH_UTC;
+  while (target >= yearStart + utopianYearLength(year) * DAY_IN_MS) {
+    yearStart += utopianYearLength(year) * DAY_IN_MS;
+    year += 1;
+  }
+  const dayOfYear = Math.floor((target - yearStart) / DAY_IN_MS);
+  if (dayOfYear < 364) {
+    const month = UTOPIAN_MONTHS[Math.floor(dayOfYear / 28)];
+    const day = (dayOfYear % 28) + 1;
+    const weekday = UTOPIAN_WEEKDAYS[(day - 1) % 7];
+    return `${weekday}, ${month} ${day}, Utopian Year ${year}`;
+  }
+  return `Beyond the Week, The Bridging ${dayOfYear - 363}, Utopian Year ${year}`;
+}
+
+function formatGregorianDate(date) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
+function certificateNumber(date = new Date()) {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  const randomHex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
+  return `USV-${date.getUTCFullYear()}-${randomHex}`;
+}
+
+function scoreAssessment(answers) {
+  if (!Array.isArray(answers) || answers.length !== ASSESSMENT_QUESTION_COUNT) {
+    throw new ClientError(`Exactly ${ASSESSMENT_QUESTION_COUNT} answers are required.`, 400, "assessment_incomplete");
+  }
+  let score = 0;
+  answers.forEach((answer, index) => {
+    if (!Number.isInteger(answer) || answer < 0 || answer > 3) {
+      throw new ClientError("Every assessment answer must identify one of the four choices.", 400, "assessment_invalid");
+    }
+    const questionId = index + 1;
+    const correctIndex = (4 - (questionId % 4)) % 4;
+    if (answer === correctIndex) score += 1;
+  });
+  return score;
+}
+
+async function verifyTurnstile(request, env, token, issuanceKey) {
+  if (!env.TURNSTILE_SECRET) return;
+  if (typeof token !== "string" || !token) {
+    throw new ClientError("Complete the human verification before issuing the certificate.", 400, "turnstile_required");
+  }
+  const form = new FormData();
+  form.set("secret", env.TURNSTILE_SECRET);
+  form.set("response", token);
+  form.set("idempotency_key", issuanceKey);
+  const remoteIp = request.headers.get("CF-Connecting-IP");
+  if (remoteIp) form.set("remoteip", remoteIp);
+  const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: form });
+  const result = await response.json();
+  if (!response.ok || !result.success) {
+    throw new ClientError("Human verification expired or could not be confirmed. Please try again.", 400, "turnstile_failed");
+  }
 }
 
 async function digest(value) {
@@ -238,6 +356,128 @@ async function createCitizen(request, env, input) {
   return { civicId, ledgerId: prepared.id, certificateNumber };
 }
 
+function issuedCertificate(row) {
+  return {
+    serial: row.certificate_number,
+    civicName: row.civic_name,
+    score: Number(row.assessment_score),
+    utopianDate: row.utopian_joined_date,
+    gregorianDate: row.gregorian_joined_date,
+  };
+}
+
+async function citizenByIssuanceKey(env, issuanceKey) {
+  return env.DB.prepare(`
+    SELECT civic_id, civic_name, certificate_number, standing, assessment_score,
+           utopian_joined_date, gregorian_joined_date, joined_at, entry_ledger_id,
+           issuance_key, assessment_version
+    FROM citizens WHERE issuance_key = ?1 LIMIT 1
+  `).bind(issuanceKey).first();
+}
+
+async function issueCertificate(request, env, input) {
+  requirePublicOrigin(request);
+  const civicName = cleanText(input.civicName, 160);
+  const signature = cleanText(input.signature, 160);
+  if (signature.toLocaleLowerCase() !== civicName.toLocaleLowerCase()) {
+    throw new ClientError("The digital signature must match the civic name exactly.", 400, "signature_mismatch");
+  }
+  if (input.oathAccepted !== true) {
+    throw new ClientError("The voluntary oath must be accepted before a certificate can be issued.", 400, "oath_required");
+  }
+  if (input.assessmentVersion !== ASSESSMENT_VERSION) {
+    throw new ClientError("This assessment version is no longer accepted. Refresh the portal and try again.", 409, "assessment_version");
+  }
+  const issuanceKey = cleanText(input.issuanceKey, 80);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(issuanceKey)) {
+    throw new ClientError("The issuance request identifier is invalid.", 400, "issuance_key_invalid");
+  }
+
+  const score = scoreAssessment(input.answers);
+  if (score < ASSESSMENT_PASSING_SCORE) {
+    throw new ClientError(`The server verified a score of ${score}%. A score of ${ASSESSMENT_PASSING_SCORE}% is required.`, 422, "assessment_not_passed");
+  }
+
+  const existing = await citizenByIssuanceKey(env, issuanceKey);
+  if (existing) {
+    if (existing.civic_name.toLocaleLowerCase() !== civicName.toLocaleLowerCase()) {
+      throw new ClientError("This issuance request is already associated with a different civic name.", 409, "issuance_key_reused");
+    }
+    return {
+      created: false,
+      certificate: issuedCertificate(existing),
+      civicId: existing.civic_id,
+      ledgerId: existing.entry_ledger_id,
+    };
+  }
+
+  await verifyTurnstile(request, env, input.turnstileToken, issuanceKey);
+
+  for (let attempt = 0; attempt < CERTIFICATE_COLLISION_RETRIES; attempt += 1) {
+    const now = new Date();
+    const joinedAt = now.toISOString();
+    const utopianDate = formatUtopianDate(now);
+    const gregorianDate = formatGregorianDate(now);
+    const serial = certificateNumber(now);
+    const entryInput = {
+      eventType: "citizenship_granted",
+      category: "citizenship",
+      title: `Virtual symbolic citizenship recorded for ${civicName}`,
+      summary: `${civicName} demonstrated civic comprehension, entered the virtual oath freely, and was recorded as an active virtual symbolic citizen.`,
+      actorName: "Immigration Civic Portal",
+      subjectName: civicName,
+      subjectRef: serial,
+      occurredAt: joinedAt,
+      utopianDate,
+      gregorianDate,
+      sourceLabel: "Immigration Civic Portal · automatic issuance v1",
+      sourceUrl: `${request.headers.get("Origin")}/circles/immigration`,
+      metadata: {
+        certificateNumber: serial,
+        assessmentScore: score,
+        assessmentVersion: ASSESSMENT_VERSION,
+        standing: "active",
+        issuance: "server",
+      },
+    };
+    const prepared = await prepareEntry(env, entryInput);
+    const civicId = `USC-${crypto.randomUUID()}`;
+    const citizenStatement = env.DB.prepare(`
+      INSERT INTO citizens (
+        civic_id, civic_name, certificate_number, standing, assessment_score,
+        utopian_joined_date, gregorian_joined_date, joined_at, entry_ledger_id,
+        source_label, created_at, issuance_key, assessment_version
+      ) VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+    `).bind(
+      civicId, civicName, serial, score, utopianDate, gregorianDate, joinedAt,
+      prepared.id, entryInput.sourceLabel, prepared.recordedAt, issuanceKey,
+      ASSESSMENT_VERSION,
+    );
+
+    try {
+      await env.DB.batch([prepared.statement, citizenStatement]);
+      return {
+        created: true,
+        certificate: { serial, civicName, score, utopianDate, gregorianDate },
+        civicId,
+        ledgerId: prepared.id,
+      };
+    } catch (error) {
+      const concurrent = await citizenByIssuanceKey(env, issuanceKey);
+      if (concurrent) {
+        return {
+          created: false,
+          certificate: issuedCertificate(concurrent),
+          civicId: concurrent.civic_id,
+          ledgerId: concurrent.entry_ledger_id,
+        };
+      }
+      if (!String(error).includes("UNIQUE") || attempt === CERTIFICATE_COLLISION_RETRIES - 1) throw error;
+    }
+  }
+  throw new Error("A unique certificate number could not be reserved.");
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, "") || "/";
@@ -248,6 +488,12 @@ async function route(request, env) {
   if (request.method === "GET" && path === "/v1/ledger") return listLedger(request, env, url);
   if (request.method === "GET" && path === "/v1/population") return population(request, env);
   if (request.method === "GET" && path === "/v1/citizens") return listCitizens(request, env, url);
+
+  if (request.method === "POST" && path === "/v1/immigration/issue-certificate") {
+    const body = await readJson(request);
+    const written = await issueCertificate(request, env, body);
+    return json(request, written, { status: written.created ? 201 : 200 });
+  }
 
   if (request.method === "POST" && path === "/v1/admin/ledger") {
     await requireAdmin(request, env);
@@ -273,6 +519,9 @@ export default {
     } catch (error) {
       if (error instanceof Response) return error;
       console.error(JSON.stringify({ level: "error", message: "civic-ledger-request-failed", error: String(error) }));
+      if (error instanceof ClientError) {
+        return json(request, { error: error.message, code: error.code }, { status: error.status });
+      }
       const status = error instanceof SyntaxError ? 400 : 500;
       return json(request, { error: status === 400 ? "Invalid JSON request." : "The civic record could not complete this request." }, { status });
     }

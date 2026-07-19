@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ASSESSMENT_PASSING_SCORE, immigrationDomains, immigrationQuestions } from "../lib/immigration-assessment";
 import { gregorianDateUTC, utopianDate } from "../lib/utopian-time";
+import { issueNaturalizationCertificate } from "../lib/civic-ledger";
 
 type Stage = "declaration" | "assessment" | "result" | "oath" | "certificate";
 
@@ -27,12 +28,6 @@ function stageNumber(stage: Stage) {
   return 4;
 }
 
-function makeSerial() {
-  const bytes = new Uint32Array(2);
-  crypto.getRandomValues(bytes);
-  return `USV-${new Date().getUTCFullYear()}-${bytes[0].toString(16).padStart(8, "0").toUpperCase()}${bytes[1].toString(16).slice(0, 4).padStart(4, "0").toUpperCase()}`;
-}
-
 export function ImmigrationApplication() {
   const [stage, setStage] = useState<Stage>("declaration");
   const [civicName, setCivicName] = useState("");
@@ -49,6 +44,9 @@ export function ImmigrationApplication() {
   const [signature, setSignature] = useState("");
   const [oathAccepted, setOathAccepted] = useState(false);
   const [certificate, setCertificate] = useState<Certificate | null>(null);
+  const [issuing, setIssuing] = useState(false);
+  const [issuanceError, setIssuanceError] = useState("");
+  const issuanceKey = useRef("");
 
   const activeStep = stageNumber(stage);
   const totalPages = Math.ceil(immigrationQuestions.length / PAGE_SIZE);
@@ -110,26 +108,34 @@ export function ImmigrationApplication() {
     setAssessmentPage(0);
     setScore(null);
     setAssessmentError("");
+    setIssuanceError("");
+    issuanceKey.current = "";
     setStage("assessment");
   }
 
-  function issueCertificate(event: FormEvent<HTMLFormElement>) {
+  async function issueCertificate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (score === null || score < ASSESSMENT_PASSING_SCORE || !oathAccepted || signature.trim().toLocaleLowerCase() !== civicName.trim().toLocaleLowerCase()) return;
-    const now = new Date();
-    const civicDate = utopianDate(now);
-    const civicDateLabel = civicDate.bridge
-      ? `${civicDate.weekday}, ${civicDate.month} ${civicDate.day}, ${civicDate.yearLabel}`
-      : `${civicDate.weekday}, ${civicDate.month} ${civicDate.day}, ${civicDate.yearLabel}`;
-    setCertificate({
-      serial: makeSerial(),
-      civicName: civicName.trim(),
-      score,
-      utopianDate: civicDateLabel,
-      gregorianDate: gregorianDateUTC(now),
-    });
-    setStage("certificate");
-    document.getElementById("immigration-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setIssuing(true);
+    setIssuanceError("");
+    if (!issuanceKey.current) issuanceKey.current = crypto.randomUUID();
+    try {
+      const issued = await issueNaturalizationCertificate({
+        civicName: civicName.trim(),
+        signature: signature.trim(),
+        oathAccepted,
+        assessmentVersion: "immigration-v1",
+        answers,
+        issuanceKey: issuanceKey.current,
+      });
+      setCertificate(issued.certificate);
+      setStage("certificate");
+      document.getElementById("immigration-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (error) {
+      setIssuanceError(error instanceof Error ? error.message : "The civic record could not issue this certificate.");
+    } finally {
+      setIssuing(false);
+    }
   }
 
   function previewCertificate() {
@@ -150,10 +156,10 @@ export function ImmigrationApplication() {
   return <section className="immigration-workspace" id="immigration-workspace" aria-labelledby="immigration-workspace-title">
     <div className="immigration-process-header">
       <div>
-        <span className="eyebrow">Hopeful intake · Local civic demonstration</span>
+        <span className="eyebrow">Hopeful intake · Civic naturalization</span>
         <h2 id="immigration-workspace-title">Enter the covenant with clarity.</h2>
       </div>
-      <p>This complete interaction runs only in the current browser session. Refreshing clears the application; no personal information is transmitted or retained yet.</p>
+      <p>Your statements, contact field, and individual answers remain in this browser. Only successful certificate details—civic name, score, dates, serial, and standing—enter the public civic record.</p>
     </div>
 
     <ol className="immigration-stepper" aria-label="Symbolic naturalization process">
@@ -209,7 +215,7 @@ export function ImmigrationApplication() {
         <div><span>Civic Comprehension Assessment</span><h3>Questions {assessmentPage * PAGE_SIZE + 1}–{Math.min((assessmentPage + 1) * PAGE_SIZE, immigrationQuestions.length)}</h3></div>
         <div className="assessment-progress" aria-label={`${answeredCount} of 100 questions answered`}><b>{answeredCount}</b><span>of 100 answered</span><i><span style={{ width: `${answeredCount}%` }} /></i></div>
       </header>
-      <p className="assessment-note">Passing requires {ASSESSMENT_PASSING_SCORE} correct answers. This measures comprehension of the published framework—not agreement, worth, or eligibility for physical admission.</p>
+      <p className="assessment-note">Passing requires {ASSESSMENT_PASSING_SCORE} correct answers. The portal shows a local result first; the civic server independently verifies all 100 answers before issuing a record.</p>
       <div className="assessment-question-list">
         {visibleQuestions.map((question) => <fieldset className="assessment-question" key={question.id}>
           <legend><b>{String(question.id).padStart(3, "0")}</b><span>{question.prompt}</span><small>{question.domain}</small></legend>
@@ -243,7 +249,8 @@ export function ImmigrationApplication() {
       <p className="oath-clarification">This oath creates no legal nationality or physical residency. It records a voluntary symbolic relationship with the online Utopian Society Corpus.</p>
       <label className="oath-consent"><input type="checkbox" checked={oathAccepted} onChange={(event) => setOathAccepted(event.target.checked)} /><span>I have read this oath, understand its symbolic scope, and enter it voluntarily.</span></label>
       <label className="oath-signature"><span>Type your civic name exactly to sign</span><input value={signature} onChange={(event) => setSignature(event.target.value)} autoComplete="off" /></label>
-      <button className="immigration-primary-action" type="submit" disabled={!oathAccepted || signature.trim().toLocaleLowerCase() !== civicName.trim().toLocaleLowerCase()}>Issue symbolic-naturalization certificate</button>
+      {issuanceError && <p className="immigration-error oath-issuance-error" role="alert">{issuanceError}</p>}
+      <button className="immigration-primary-action" type="submit" disabled={issuing || !oathAccepted || signature.trim().toLocaleLowerCase() !== civicName.trim().toLocaleLowerCase()}>{issuing ? "Reserving the civic record…" : "Issue symbolic-naturalization certificate"}</button>
     </form>}
 
     {stage === "certificate" && certificate && <div className="immigration-completion">
@@ -270,7 +277,7 @@ export function ImmigrationApplication() {
         <Link href="/corpus/immigration-codex">Read the governing Codex</Link>
       </div>
       {!certificate.preview && <div className="ledger-preview">
-        <header><span>Public Transparency Ledger · Local preview</span><h3>Civic standing belongs in the public record.</h3></header>
+        <header><span>Public Transparency Ledger · Recorded</span><h3>Civic standing now belongs to the living record.</h3></header>
         <div>
           <span>{certificate.serial}</span>
           <strong>{certificate.civicName}</strong>
@@ -278,12 +285,7 @@ export function ImmigrationApplication() {
           <b>Virtual symbolic citizen</b>
           <i>{certificate.score}% · Comprehension standard met</i>
         </div>
-        <p>
-          This preview is not yet retained. The production public ledger will preserve the civic name,
-          certificate number, recognition type, date, and status. Contact information, personal statements,
-          individual answers, interviews, evidence, and internal review notes remain protected in the private
-          application record.
-        </p>
+        <p>The server reserved this unique certificate number and atomically entered the recognition in the citizen register and immutable Transparency Ledger. Contact information, personal statements, and individual answers were not retained. <Link href="/transparency-ledger">Open the public civic record.</Link></p>
       </div>}
     </div>}
   </section>;
