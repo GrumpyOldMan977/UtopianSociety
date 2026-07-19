@@ -1,3 +1,5 @@
+import { CIVIC_LEDGER_API, type PopulationSummary } from "../../lib/civic-ledger";
+
 const GYRE_LATITUDE = -32;
 const GYRE_LONGITUDE = -120;
 
@@ -91,8 +93,9 @@ export async function GET() {
   }).toString();
 
   const newsUrl = "https://feeds.bbci.co.uk/news/world/rss.xml";
+  const populationUrl = `${CIVIC_LEDGER_API}/v1/population`;
 
-  const [weatherResult, marineResult, newsResult] = await Promise.allSettled([
+  const [weatherResult, marineResult, newsResult, populationResult] = await Promise.allSettled([
     fetch(weatherUrl, { headers: { Accept: "application/json" } }).then(async (response) => {
       if (!response.ok) throw new Error(`Weather source returned ${response.status}`);
       return response.json() as Promise<WeatherPayload>;
@@ -105,11 +108,16 @@ export async function GET() {
       if (!response.ok) throw new Error(`News source returned ${response.status}`);
       return response.text();
     }),
+    fetch(populationUrl, { headers: { Accept: "application/json" } }).then(async (response) => {
+      if (!response.ok) throw new Error(`Population source returned ${response.status}`);
+      return response.json() as Promise<PopulationSummary>;
+    }),
   ]);
 
   const weather = weatherResult.status === "fulfilled" ? weatherResult.value.current : undefined;
   const marine = marineResult.status === "fulfilled" ? marineResult.value.current : undefined;
   const headlines = newsResult.status === "fulfilled" ? parseHeadlines(newsResult.value) : [];
+  const population = populationResult.status === "fulfilled" ? populationResult.value : null;
 
   const seaFahrenheit = typeof marine?.sea_surface_temperature === "number"
     ? marine.sea_surface_temperature * 9 / 5 + 32
@@ -133,6 +141,7 @@ export async function GET() {
       currentMph: typeof marine?.ocean_current_velocity === "number" ? Number(marine.ocean_current_velocity.toFixed(1)) : null,
     } : null,
     headlines,
+    population,
     updatedAt: new Date().toISOString(),
   }, {
     headers: {

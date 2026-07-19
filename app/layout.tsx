@@ -3,6 +3,7 @@ import "./globals.css";
 import "./civic-completion.css";
 import "./blog-completion.css";
 import "./sexual-care.css";
+import "./transparency-ledger.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://utopiansocietycorpus.org"),

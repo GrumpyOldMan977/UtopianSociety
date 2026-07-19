@@ -27,7 +27,10 @@ const diagonalPositions = new Set<RingPosition>(["northeast", "southeast", "sout
 function ringArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number) {
   const point = (angle: number) => {
     const radians = angle * Math.PI / 180;
-    return { x: cx + r * Math.cos(radians), y: cy + r * Math.sin(radians) };
+    // Keep the server and browser SVG path strings byte-for-byte identical.
+    // Different JS engines can otherwise disagree in the final floating-point digit.
+    const stable = (value: number) => Number(value.toFixed(6));
+    return { x: stable(cx + r * Math.cos(radians)), y: stable(cy + r * Math.sin(radians)) };
   };
   const start = point(startAngle);
   const end = point(endAngle);

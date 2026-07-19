@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { utopianDate } from "../lib/utopian-time";
+import type { PopulationSummary } from "../lib/civic-ledger";
 
 type TickerPayload = {
   weather: null | {
@@ -14,6 +15,7 @@ type TickerPayload = {
     waveHeightFt: number | null;
     currentMph: number | null;
   };
+  population: PopulationSummary | null;
   headlines: Array<{ title: string; url: string }>;
   updatedAt: string;
 };
@@ -58,16 +60,20 @@ export function CivicTicker() {
   }, []);
 
   const items = useMemo(() => {
-    const next = [
+    const population = payload?.population;
+    const populationCopy = population
+      ? `Population · ${population.active.toLocaleString()} active virtual symbolic ${population.active === 1 ? "citizen" : "citizens"}${population.latestCitizen ? ` · latest: ${population.latestCitizen.civicName}` : ""}`
+      : "Population · Awaiting the public Citizen Register";
+    return [
       "BETA · Civic portal under active construction",
+      populationCopy,
       payload?.weather
         ? `South Pacific Gyre · ${payload.weather.temperatureF}°F · ${payload.weather.condition} · wind ${payload.weather.windDirection} ${payload.weather.windMph} mph${payload.weather.seaTemperatureF !== null ? ` · sea ${payload.weather.seaTemperatureF}°F` : ""}${payload.weather.waveHeightFt !== null ? ` · swell ${payload.weather.waveHeightFt} ft` : ""}`
         : "South Pacific Gyre · Awaiting the next open-ocean observation",
       now ? `Utopian Reference Time · ${civicTime(now)}` : "Utopian Reference Time · Synchronizing",
-      "Civic instruments · Public beta · Prototype records are not retained",
+      "Public record · Transparency Ledger operational",
       ...(payload?.headlines ?? []).map((headline) => `World · ${headline.title}`),
     ];
-    return next;
   }, [now, payload]);
 
   const duration = `${Math.max(58, items.join(" ").length * 0.16)}s`;
@@ -84,6 +90,7 @@ export function CivicTicker() {
         <p className="ticker-a11y" aria-live="polite">{items.join(". ")}</p>
       </div>
       <span className="ticker-credit">
+        <a href="/transparency-ledger">Ledger: Civic Portal</a>
         <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Weather: Open-Meteo</a>
         <a href="https://www.bbc.com/news/world" target="_blank" rel="noreferrer">Headlines: BBC News</a>
       </span>

@@ -345,7 +345,7 @@ export const navigatorViews: Record<NavigatorViewId, NavigatorView> = {
     description: "Public records make civic action reviewable while protecting intimate, medical, and personally identifying information where privacy is required.",
     parent: "civic-portal",
     nodes: [
-      { id: "ledger", title: "Transparency Ledger", subtitle: "Maintenance, decisions, provenance, and correction", position: "north", href: `${circleHref("custodianship")}#civic-action-studio` },
+      { id: "ledger", title: "Transparency Ledger", subtitle: "Standing, decisions, provenance, and correction", position: "north", href: "/transparency-ledger" },
       { id: "proceedings", title: "Proceedings Calendar", subtitle: "Availability and status without private histories", position: "east", href: `${circleHref("harmony")}#civic-action-studio` },
       { id: "time-record", title: "Civic Time", subtitle: "Calendar, observances, and public conversion", position: "south", href: `${circleHref("time-observance")}#living-calendar` },
       { id: "review", title: "System Review", subtitle: "Capacity, Continuance, and public methodology", position: "west", href: `${circleHref("balance")}#civic-action-studio` },
