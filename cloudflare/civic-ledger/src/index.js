@@ -573,7 +573,7 @@ async function route(request, env) {
   return json(request, { error: "Not found" }, { status: 404 });
 }
 
-export default {
+const civicLedgerWorker = {
   async fetch(request, env) {
     try {
       return await route(request, env);
@@ -588,3 +588,5 @@ export default {
     }
   },
 };
+
+export default civicLedgerWorker;

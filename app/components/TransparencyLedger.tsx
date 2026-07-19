@@ -79,7 +79,8 @@ export function TransparencyLedger() {
   );
 
   if (error && !state) {
-    return <section className="ledger-state" role="status">
+    return <section className="ledger-state" id="citizen-register" role="status">
+      <span id="ledger-stream" className="ledger-fragment-anchor" aria-hidden="true" />
       <span>Public record connection</span>
       <h2>The ledger is resting between requests.</h2>
       <p>No civic record has been altered. The page will request the public chain again automatically.</p>
@@ -87,7 +88,8 @@ export function TransparencyLedger() {
   }
 
   if (!state) {
-    return <section className="ledger-state" role="status" aria-live="polite">
+    return <section className="ledger-state" id="citizen-register" role="status" aria-live="polite">
+      <span id="ledger-stream" className="ledger-fragment-anchor" aria-hidden="true" />
       <span>Public record connection</span>
       <h2>Reading the living record…</h2>
       <p>Population, civic standing, and the append-only change chain are being verified.</p>
