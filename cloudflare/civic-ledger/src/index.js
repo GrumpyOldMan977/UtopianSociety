@@ -176,6 +176,7 @@ async function requireAdmin(request, env) {
 function canonicalEntry(entry, previousHash, id, recordedAt) {
   return JSON.stringify({
     id,
+    eventKey: entry.eventKey || null,
     eventType: entry.eventType,
     category: entry.category,
     title: entry.title,
@@ -197,6 +198,7 @@ function canonicalEntry(entry, previousHash, id, recordedAt) {
 
 function normalizeEntry(input) {
   return {
+    eventKey: cleanText(input.eventKey, 160, false),
     eventType: cleanText(input.eventType, 80),
     category: cleanText(input.category, 80),
     title: cleanText(input.title, 180),
@@ -223,26 +225,39 @@ async function prepareEntry(env, rawEntry) {
   const integrityHash = await digest(canonicalEntry(entry, previousHash, id, recordedAt));
   const statement = env.DB.prepare(`
     INSERT INTO ledger_entries (
-      id, event_type, category, title, summary, actor_name, subject_name, subject_ref,
+      id, event_key, event_type, category, title, summary, actor_name, subject_name, subject_ref,
       occurred_at, utopian_date, gregorian_date, source_label, source_url, metadata_json,
       supersedes_id, previous_hash, integrity_hash, recorded_at
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
   `).bind(
-    id, entry.eventType, entry.category, entry.title, entry.summary, entry.actorName,
-    entry.subjectName || null, entry.subjectRef || null, entry.occurredAt, entry.utopianDate,
-    entry.gregorianDate, entry.sourceLabel, entry.sourceUrl || null, JSON.stringify(entry.metadata),
-    entry.supersedesId || null, previousHash, integrityHash, recordedAt,
+    id, entry.eventKey || null, entry.eventType, entry.category, entry.title, entry.summary,
+    entry.actorName, entry.subjectName || null, entry.subjectRef || null, entry.occurredAt,
+    entry.utopianDate, entry.gregorianDate, entry.sourceLabel, entry.sourceUrl || null,
+    JSON.stringify(entry.metadata), entry.supersedesId || null, previousHash, integrityHash,
+    recordedAt,
   );
   return { entry, id, integrityHash, previousHash, recordedAt, statement };
 }
 
+async function entryByEventKey(env, eventKey) {
+  if (!eventKey) return null;
+  return env.DB.prepare("SELECT * FROM ledger_entries WHERE event_key = ?1 LIMIT 1").bind(eventKey).first();
+}
+
 async function appendLedgerEntry(env, rawEntry) {
+  const normalized = normalizeEntry(rawEntry);
+  const existing = await entryByEventKey(env, normalized.eventKey);
+  if (existing) return { created: false, ...publicEntry(existing) };
+
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const prepared = await prepareEntry(env, rawEntry);
+    const prepared = await prepareEntry(env, normalized);
     try {
       await prepared.statement.run();
-      return prepared;
+      const row = await env.DB.prepare("SELECT * FROM ledger_entries WHERE id = ?1 LIMIT 1").bind(prepared.id).first();
+      return { created: true, ...publicEntry(row) };
     } catch (error) {
+      const concurrent = await entryByEventKey(env, normalized.eventKey);
+      if (concurrent) return { created: false, ...publicEntry(concurrent) };
       if (attempt === 2 || !String(error).includes("UNIQUE")) throw error;
     }
   }
@@ -253,6 +268,7 @@ function publicEntry(row) {
   return {
     sequence: row.seq,
     id: row.id,
+    eventKey: row.event_key || null,
     eventType: row.event_type,
     category: row.category,
     title: row.title,
@@ -271,6 +287,44 @@ function publicEntry(row) {
     integrityHash: row.integrity_hash,
     recordedAt: row.recorded_at,
   };
+}
+
+async function registerRelease(env, input) {
+  const releaseKey = cleanText(input.releaseKey, 120);
+  if (!/^[a-z0-9][a-z0-9:._/-]{2,119}$/i.test(releaseKey)) {
+    throw new ClientError("The release key contains unsupported characters.", 400, "release_key_invalid");
+  }
+  if (!Array.isArray(input.entries) || input.entries.length < 1 || input.entries.length > 25) {
+    throw new ClientError("A release must contain between 1 and 25 ledger entries.", 400, "release_entries_invalid");
+  }
+
+  const seen = new Set();
+  const entries = [];
+  for (let index = 0; index < input.entries.length; index += 1) {
+    const supplied = input.entries[index];
+    const eventKey = cleanText(supplied?.eventKey || `${releaseKey}:${index + 1}`, 160);
+    if (seen.has(eventKey)) {
+      throw new ClientError("A release cannot repeat an event key.", 400, "release_event_key_duplicate");
+    }
+    seen.add(eventKey);
+    const metadata = supplied?.metadata && typeof supplied.metadata === "object" && !Array.isArray(supplied.metadata)
+      ? supplied.metadata
+      : {};
+    entries.push(await appendLedgerEntry(env, {
+      ...supplied,
+      eventKey,
+      metadata: { ...metadata, releaseKey },
+    }));
+  }
+
+  console.log(JSON.stringify({
+    level: "info",
+    message: "ledger-release-registered",
+    releaseKey,
+    created: entries.filter((entry) => entry.created).length,
+    existing: entries.filter((entry) => !entry.created).length,
+  }));
+  return { releaseKey, entries };
 }
 
 async function listLedger(request, env, url) {
@@ -483,7 +537,7 @@ async function route(request, env) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
 
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(request) });
-  if (request.method === "GET" && path === "/") return json(request, { service: "Utopian Society Civic Ledger", status: "operational", version: 1 });
+  if (request.method === "GET" && path === "/") return json(request, { service: "Utopian Society Civic Ledger", status: "operational", version: 2 });
   if (request.method === "GET" && path === "/health") return json(request, { ok: true, service: "civic-ledger" });
   if (request.method === "GET" && path === "/v1/ledger") return listLedger(request, env, url);
   if (request.method === "GET" && path === "/v1/population") return population(request, env);
@@ -497,14 +551,21 @@ async function route(request, env) {
 
   if (request.method === "POST" && path === "/v1/admin/ledger") {
     await requireAdmin(request, env);
-    const body = await request.json();
+    const body = await readJson(request);
     const written = await appendLedgerEntry(env, body);
-    return json(request, { entry: { id: written.id, integrityHash: written.integrityHash } }, { status: 201 });
+    return json(request, { entry: written }, { status: written.created ? 201 : 200 });
+  }
+
+  if (request.method === "POST" && path === "/v1/admin/releases") {
+    await requireAdmin(request, env);
+    const body = await readJson(request, 100_000);
+    const written = await registerRelease(env, body);
+    return json(request, written, { status: written.entries.some((entry) => entry.created) ? 201 : 200 });
   }
 
   if (request.method === "POST" && path === "/v1/admin/citizens") {
     await requireAdmin(request, env);
-    const body = await request.json();
+    const body = await readJson(request);
     const written = await createCitizen(request, env, body);
     return json(request, written, { status: 201 });
   }

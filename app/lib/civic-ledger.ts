@@ -30,6 +30,7 @@ export type PublicCitizen = {
 export type LedgerEntry = {
   sequence: number;
   id: string;
+  eventKey: string | null;
   eventType: string;
   category: string;
   title: string;

@@ -12,3 +12,7 @@
 .ledger-stream ol::-webkit-scrollbar-track{background:rgba(64,79,68,.1);border-left:1px solid rgba(126,96,48,.18)}
 .ledger-stream ol::-webkit-scrollbar-thumb{border:3px solid #e8dcc6;border-radius:8px;background:#a77a36}
 .ledger-stream li:last-child{border-bottom:0}
+.ledger-live-status{grid-column:2;display:flex;align-items:center;gap:9px;margin-top:15px!important;color:#4e6f61!important;font-size:12px!important;font-weight:750;letter-spacing:.055em;text-transform:uppercase}
+.ledger-live-status>span{width:9px;height:9px;border-radius:50%;background:#418b65;box-shadow:0 0 0 4px rgba(65,139,101,.13)}
+.ledger-live-status.is-paused{color:#8a6428!important}.ledger-live-status.is-paused>span{background:#b88736;box-shadow:0 0 0 4px rgba(184,135,54,.13)}
+@media(max-width:900px){.ledger-live-status{grid-column:1}}

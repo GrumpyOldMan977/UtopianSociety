@@ -1,0 +1,57 @@
+{
+  "releaseKey": "civic-platform:2026-07-19:ledger-automation-v1",
+  "entries": [
+    {
+      "eventKey": "site-release:2d97e7c:public-record-topology",
+      "eventType": "site_architecture_released",
+      "category": "platform",
+      "title": "Proceedings Calendar and System Review given independent civic destinations",
+      "summary": "The frontispiece now routes the Proceedings Calendar to Harmony and System Review to Balance as distinct public-record surfaces, while the Transparency Ledger remains an independent Society-wide record.",
+      "actorName": "Utopian Society Corpus",
+      "occurredAt": "2026-07-19T12:00:00.000Z",
+      "utopianDate": "Conceptday, Solvane 10, Utopian Year 1",
+      "gregorianDate": "July 19, 2026",
+      "sourceLabel": "Utopian Society Corpus v2 · public-record topology",
+      "sourceUrl": "https://utopian-society-corpus-v2.gt90v12.chatgpt.site/?map=civic-life",
+      "metadata": {
+        "commit": "2d97e7c",
+        "destinations": ["Transparency Ledger", "Proceedings Calendar", "System Review"]
+      }
+    },
+    {
+      "eventKey": "site-release:fe60683:ledger-scroll-region",
+      "eventType": "accessibility_release",
+      "category": "platform",
+      "title": "Transparency Ledger made independently scrollable",
+      "summary": "The growing public chain now occupies a bounded, keyboard-focusable scroll region with visible focus treatment and accessible labeling, preserving the page around it as the record expands.",
+      "actorName": "Utopian Society Corpus",
+      "occurredAt": "2026-07-19T12:05:00.000Z",
+      "utopianDate": "Conceptday, Solvane 10, Utopian Year 1",
+      "gregorianDate": "July 19, 2026",
+      "sourceLabel": "Utopian Society Corpus v2 · ledger interface",
+      "sourceUrl": "https://utopian-society-corpus-v2.gt90v12.chatgpt.site/transparency-ledger",
+      "metadata": {
+        "commit": "fe60683",
+        "accessibility": ["keyboard focus", "bounded scroll", "visible focus"]
+      }
+    },
+    {
+      "eventKey": "civic-platform:ledger-automation-v1",
+      "eventType": "civic_infrastructure_released",
+      "category": "platform",
+      "title": "Transparency Ledger automation activated",
+      "summary": "Civic events and completed releases can now register through duplicate-safe event keys. Safe retries return the original entry instead of creating another record, and the public ledger refreshes automatically while open.",
+      "actorName": "Utopian Society Civic Platform",
+      "occurredAt": "2026-07-19T12:10:00.000Z",
+      "utopianDate": "Conceptday, Solvane 10, Utopian Year 1",
+      "gregorianDate": "July 19, 2026",
+      "sourceLabel": "Civic Ledger automation v1",
+      "sourceUrl": "https://utopian-society-corpus-v2.gt90v12.chatgpt.site/transparency-ledger",
+      "metadata": {
+        "idempotency": "D1 unique event keys",
+        "releaseRetry": true,
+        "publicRefreshSeconds": 30
+      }
+    }
+  ]
+}

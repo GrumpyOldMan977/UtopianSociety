@@ -25,15 +25,20 @@ function hashExcerpt(value: string) {
 export function TransparencyLedger() {
   const [state, setState] = useState<LedgerState | null>(null);
   const [error, setError] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
   useEffect(() => {
     let active = true;
+    let loading = false;
+    const controller = new AbortController();
     const load = async () => {
+      if (loading) return;
+      loading = true;
       try {
         const [populationResponse, citizensResponse, ledgerResponse] = await Promise.all([
-          fetch(`${CIVIC_LEDGER_API}/v1/population`, { headers: { Accept: "application/json" } }),
-          fetch(`${CIVIC_LEDGER_API}/v1/citizens?limit=100`, { headers: { Accept: "application/json" } }),
-          fetch(`${CIVIC_LEDGER_API}/v1/ledger?limit=100`, { headers: { Accept: "application/json" } }),
+          fetch(`${CIVIC_LEDGER_API}/v1/population`, { cache: "no-store", headers: { Accept: "application/json" }, signal: controller.signal }),
+          fetch(`${CIVIC_LEDGER_API}/v1/citizens?limit=100`, { cache: "no-store", headers: { Accept: "application/json" }, signal: controller.signal }),
+          fetch(`${CIVIC_LEDGER_API}/v1/ledger?limit=100`, { cache: "no-store", headers: { Accept: "application/json" }, signal: controller.signal }),
         ]);
         if (!populationResponse.ok || !citizensResponse.ok || !ledgerResponse.ok) {
           throw new Error("The public record is temporarily unavailable.");
@@ -46,13 +51,26 @@ export function TransparencyLedger() {
         if (active) {
           setState({ population, citizens: citizensPayload.citizens, entries: ledgerPayload.entries });
           setError(false);
+          setLastSyncedAt(new Date());
         }
       } catch {
         if (active) setError(true);
+      } finally {
+        loading = false;
       }
     };
     void load();
-    return () => { active = false; };
+    const interval = window.setInterval(() => void load(), 30_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, []);
 
   const activeCitizens = useMemo(
@@ -60,11 +78,11 @@ export function TransparencyLedger() {
     [state],
   );
 
-  if (error) {
+  if (error && !state) {
     return <section className="ledger-state" role="status">
       <span>Public record connection</span>
       <h2>The ledger is resting between requests.</h2>
-      <p>No civic record has been altered. Refresh this page to request the public chain again.</p>
+      <p>No civic record has been altered. The page will request the public chain again automatically.</p>
     </section>;
   }
 
@@ -116,6 +134,12 @@ export function TransparencyLedger() {
         <span className="eyebrow">Append-only public chain</span>
         <h2 id="ledger-stream-title">The Transparency Ledger</h2>
         <p>Newest entries appear first. An entry cannot be silently edited or deleted; a correction must become another visible entry that points back to the record it corrects.</p>
+        <p className={`ledger-live-status${error ? " is-paused" : ""}`} role="status" aria-live="polite">
+          <span aria-hidden="true" />
+          {error
+            ? "Live refresh paused · showing the last verified record"
+            : `Live record · refreshed every 30 seconds${lastSyncedAt ? ` · last checked ${lastSyncedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}` : ""}`}
+        </p>
       </header>
       <ol tabIndex={0} aria-label="Scrollable Transparency Ledger entries">
         {state.entries.map((entry) => <li key={entry.id}>
