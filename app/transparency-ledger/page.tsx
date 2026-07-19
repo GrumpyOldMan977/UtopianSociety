@@ -18,6 +18,8 @@ export default function TransparencyLedgerPage() {
       <nav aria-label="Ledger page navigation">
         <a href="#citizen-register">Citizen Register</a>
         <a href="#ledger-stream">Change Record</a>
+        <Link href="/proceedings-calendar">Proceedings Calendar</Link>
+        <Link href="/system-review">System Review</Link>
         <Link href="/?map=public-record">Return to the Public Record weave</Link>
       </nav>
     </header>
@@ -27,4 +29,3 @@ export default function TransparencyLedgerPage() {
     <footer className="site-footer"><span>The Utopian Society Corpus</span><p>A living framework for ethical, civic, and human continuity.</p><Link href="/">Enter through the frontispiece ↑</Link></footer>
   </main>;
 }
-

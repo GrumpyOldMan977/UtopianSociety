@@ -140,7 +140,7 @@ export const civicProfiles: Record<string, CivicProfile> = {
     dailyLife: ["Report harm or request mediation.", "Choose what information may be shared and with whom.", "See the schedule and status of a restorative proceeding.", "Read anonymized outcomes and procedural lessons in the public ledger."],
     services: [
       { title: "Report harm", description: "A consent-led form for concerns, safety needs, requested remedy, and supporting evidence.", label: "Open local intake", href: "#civic-action-studio", state: "prototype" },
-      { title: "Harmony calendar", description: "A public, privacy-preserving schedule of proceedings and open mediation times.", label: "Preview availability", href: "#civic-action-studio", state: "prototype" },
+      { title: "Harmony calendar", description: "A public, privacy-preserving schedule of proceedings and open mediation times.", label: "Open the proceedings calendar", href: "/proceedings-calendar", state: "prototype" },
       { title: "Case path", description: "A private timeline showing intake, consent, evidence, conference, outcome, and appeal.", label: "Explore the process", href: "#civic-action-studio", state: "prototype" },
       { title: "Read restorative authority", description: "Follow the constitutional and Codex foundations for justice, repair, and review.", label: "Read the Restoration Codex", href: corpusPath("restoration-codex"), state: "available" },
     ],
@@ -160,9 +160,9 @@ export const civicProfiles: Record<string, CivicProfile> = {
     principle: "A measurement is a question offered to conscience, never a command issued to a life.",
     dailyLife: ["Read public capacity and sustainability indicators.", "Understand why a cross-Circle review was opened.", "Submit context that numerical models may have missed.", "Review recommendations, minority findings, and later corrections."],
     services: [
-      { title: "State of balance", description: "Public indicators with human context, uncertainty, source, and revision history.", label: "Open indicator preview", href: "#civic-action-studio", state: "prototype" },
-      { title: "Request review", description: "Ask Balance to examine an emerging cross-system strain or overlooked consequence.", label: "Prepare local review", href: "#civic-action-studio", state: "prototype" },
-      { title: "Methods library", description: "Inspect formulas, assumptions, limitations, audits, and public challenges.", label: "Inspect a method", href: "#civic-action-studio", state: "prototype" },
+      { title: "State of balance", description: "Public indicators with human context, uncertainty, source, and revision history.", label: "Open System Review", href: "/system-review", state: "prototype" },
+      { title: "Request review", description: "Ask Balance to examine an emerging cross-system strain or overlooked consequence.", label: "Prepare local review", href: "/system-review#civic-action-studio", state: "prototype" },
+      { title: "Methods library", description: "Inspect formulas, assumptions, limitations, audits, and public challenges.", label: "Inspect a method", href: "/system-review#civic-action-studio", state: "prototype" },
       { title: "Read Continuance authority", description: "Review the constitutional basis for continuity and humane capacity planning.", label: "Read Article VII", href: corpusPath("article-vii-continuance-clause"), state: "available" },
     ],
     relationships: [

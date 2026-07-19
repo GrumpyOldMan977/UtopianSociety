@@ -193,9 +193,9 @@ const actions: Record<string, Action[]> = {
   ],
 };
 
-export function CivicActionStudio({ slug }: { slug: string }) {
+export function CivicActionStudio({ slug, initialAction = 0 }: { slug: string; initialAction?: number }) {
   const available = actions[slug] ?? [];
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(initialAction);
   const [values, setValues] = useState<Record<string, string>>({});
   const [complete, setComplete] = useState(false);
   const [error, setError] = useState("");

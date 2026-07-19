@@ -346,9 +346,9 @@ export const navigatorViews: Record<NavigatorViewId, NavigatorView> = {
     parent: "civic-portal",
     nodes: [
       { id: "ledger", title: "Transparency Ledger", subtitle: "Standing, decisions, provenance, and correction", position: "north", href: "/transparency-ledger" },
-      { id: "proceedings", title: "Proceedings Calendar", subtitle: "Availability and status without private histories", position: "east", href: `${circleHref("harmony")}#civic-action-studio` },
+      { id: "proceedings", title: "Proceedings Calendar", subtitle: "Availability and status without private histories", position: "east", href: "/proceedings-calendar" },
       { id: "time-record", title: "Civic Time", subtitle: "Calendar, observances, and public conversion", position: "south", href: `${circleHref("time-observance")}#living-calendar` },
-      { id: "review", title: "System Review", subtitle: "Capacity, Continuance, and public methodology", position: "west", href: `${circleHref("balance")}#civic-action-studio` },
+      { id: "review", title: "System Review", subtitle: "Capacity, Continuance, and public methodology", position: "west", href: "/system-review" },
     ],
   },
   "circle-system": {
