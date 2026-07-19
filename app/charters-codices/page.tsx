@@ -20,7 +20,7 @@ function LibraryColumn({ title, mark, items }: { title: string; mark: string; it
 }
 
 export default function ChartersPage() {
-  return <SectionFrame eyebrow="East Ring · Civic Instruments" title="Charters & Codices" subtitle="How the civilization functions: institutions, circles, standards, repair, and living law." position="east">
+  return <SectionFrame eyebrow="North Ring · Civic Instruments" title="Charters & Codices" subtitle="How the civilization functions: institutions, circles, standards, repair, and living law." position="north">
     <section className="civic-library">
       <div className="east-library-heading"><span className="eyebrow">The civic library</span><h2>Two bodies of living law.</h2><p>Institutions and practices remain distinct, but neither can function responsibly without the other.</p></div>
       <div className="library-note"><span>Charters establish civic bodies and observances.</span><i /><span>Codices articulate practices, protections, and responses.</span></div>

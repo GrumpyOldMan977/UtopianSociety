@@ -13,7 +13,10 @@ export type RingPosition =
 export type NavigatorViewId =
   | "root"
   | "society"
+  | "civic-portal"
   | "civic-life"
+  | "civic-services"
+  | "public-record"
   | "circle-system"
   | "foundational"
   | "operational"
@@ -277,8 +280,8 @@ export const navigatorViews: Record<NavigatorViewId, NavigatorView> = {
     title: "Enter the living corpus",
     description: "Choose a ring to enter the corpus, or open its living center.",
     nodes: [
-      { id: "society", title: "Utopian Society", subtitle: "The foundation of the civilization.", position: "north", nextView: "society" },
-      { id: "charters", title: "Charters & Codices", subtitle: "Its civic instruments and living law.", position: "east", href: "/charters-codices" },
+      { id: "society", title: "Utopian Society", subtitle: "Read the constitutional framework.", position: "north", nextView: "society" },
+      { id: "civic-portal", title: "Civic Portal", subtitle: "Enter services and civic life.", position: "east", nextView: "civic-portal" },
       { id: "lore", title: "Lore", subtitle: "Life within the imagined society.", position: "south", href: "/lore" },
       { id: "essays", title: "Blogs & Essays", subtitle: "The evolution of ideas.", position: "west", href: "/blogs-essays" },
     ],
@@ -287,13 +290,26 @@ export const navigatorViews: Record<NavigatorViewId, NavigatorView> = {
     id: "society",
     eyebrow: "North Ring · Utopian Society",
     title: "Enter the civic corpus",
-    description: "Foundations, constitutional form, Circles, and the lived covenant of citizenship.",
+    description: "Read what the Society is, how it is constituted, and which instruments govern its civic bodies.",
     parent: "root",
     nodes: [
       { id: "foundations", title: "Foundations", subtitle: "Orientation, Declaration, and Charter", position: "north", href: "/utopian-society" },
-      { id: "circles", title: "Circles", subtitle: "The interwoven bodies of governance", position: "east", nextView: "circle-system" },
+      { id: "instruments", title: "Charters & Codices", subtitle: "Civic instruments and living law", position: "east", href: "/charters-codices" },
       { id: "constitution", title: "Constitution", subtitle: "The living framework", position: "south", href: corpusPath("constitution-of-the-utopian-society") },
-      { id: "citizenship", title: "Civic Life", subtitle: "Membership, rights, and responsibilities", position: "west", nextView: "civic-life" },
+      { id: "circles", title: "Circle System", subtitle: "The interwoven bodies of governance", position: "west", nextView: "circle-system" },
+    ],
+  },
+  "civic-portal": {
+    id: "civic-portal",
+    eyebrow: "East Ring · Civic Portal",
+    title: "Enter civic life",
+    description: "The public interface between the governing corpus and the people who learn, participate, seek care, request review, and keep the common record.",
+    parent: "root",
+    nodes: [
+      { id: "directory", title: "Civic Directory", subtitle: "Every Circle, office, and public interface", position: "north", href: "/circles" },
+      { id: "pathways", title: "Citizen Pathways", subtitle: "Entry, standing, rights, and voluntary exit", position: "east", nextView: "civic-life" },
+      { id: "services", title: "Services & Participation", subtitle: "Care, learning, contribution, and support", position: "south", nextView: "civic-services" },
+      { id: "record", title: "Public Record", subtitle: "Transparency, calendars, status, and review", position: "west", nextView: "public-record" },
     ],
   },
   "civic-life": {
@@ -301,12 +317,38 @@ export const navigatorViews: Record<NavigatorViewId, NavigatorView> = {
     eyebrow: "The Lived Covenant",
     title: "Enter civic life",
     description: "Membership becomes tangible through belonging, protected freedom, reciprocal responsibility, and an open path of entry.",
-    parent: "society",
+    parent: "civic-portal",
     nodes: [
       { id: "membership", title: "Membership", subtitle: "Citizenship and civic standing", position: "north", href: corpusPath("article-ii-membership-citizenship") },
       { id: "immigration", title: "Immigration", subtitle: "Begin the Hopeful pathway", position: "east", href: "/circles/immigration", primary: true },
       { id: "rights", title: "Rights & Freedoms", subtitle: "The protected civic field", position: "south", href: corpusPath("article-iii-rights-freedoms") },
       { id: "duties", title: "Duties", subtitle: "Reciprocity and responsibility", position: "west", href: corpusPath("article-iv-duties-responsibilities") },
+    ],
+  },
+  "civic-services": {
+    id: "civic-services",
+    eyebrow: "Civic Portal · Services & Participation",
+    title: "Begin with a human need",
+    description: "The portal translates constitutional mandates into understandable civic pathways without replacing the documents that govern them.",
+    parent: "civic-portal",
+    nodes: [
+      { id: "learning-service", title: "Learning & Growth", subtitle: "Education, mentorship, and lifelong development", position: "north", href: circleHref("learning") },
+      { id: "healing-service", title: "Care & Well-Being", subtitle: "Health, autonomy, access, and support", position: "east", href: circleHref("healing") },
+      { id: "contribution-service", title: "Contribution & Work", subtitle: "Participation, sectors, renewal, and retraining", position: "south", href: circleHref("contribution") },
+      { id: "harmony-service", title: "Harmony & Restoration", subtitle: "Mediation, harm response, and peaceful repair", position: "west", href: circleHref("harmony") },
+    ],
+  },
+  "public-record": {
+    id: "public-record",
+    eyebrow: "Civic Portal · Public Record",
+    title: "Authority must leave a visible trace",
+    description: "Public records make civic action reviewable while protecting intimate, medical, and personally identifying information where privacy is required.",
+    parent: "civic-portal",
+    nodes: [
+      { id: "ledger", title: "Transparency Ledger", subtitle: "Maintenance, decisions, provenance, and correction", position: "north", href: `${circleHref("custodianship")}#civic-action-studio` },
+      { id: "proceedings", title: "Proceedings Calendar", subtitle: "Availability and status without private histories", position: "east", href: `${circleHref("harmony")}#civic-action-studio` },
+      { id: "time-record", title: "Civic Time", subtitle: "Calendar, observances, and public conversion", position: "south", href: `${circleHref("time-observance")}#living-calendar` },
+      { id: "review", title: "System Review", subtitle: "Capacity, Continuance, and public methodology", position: "west", href: `${circleHref("balance")}#civic-action-studio` },
     ],
   },
   "circle-system": {
