@@ -153,7 +153,8 @@ export function TransparencyLedger() {
             <dl>
               <div><dt>Actor</dt><dd>{entry.actorName}</dd></div>
               {entry.subjectName && <div><dt>Subject</dt><dd>{entry.subjectName}{entry.subjectRef ? ` · ${entry.subjectRef}` : ""}</dd></div>}
-              <div><dt>Reference</dt><dd>{entry.gregorianDate}</dd></div>
+              <div><dt>Reference</dt><dd>{entry.utopianDate}</dd></div>
+              <div><dt>Gregorian equivalent</dt><dd>{entry.gregorianDate}</dd></div>
               <div><dt>Source</dt><dd>{entry.sourceUrl ? <a href={entry.sourceUrl} target="_blank" rel="noreferrer">{entry.sourceLabel}</a> : entry.sourceLabel}</dd></div>
             </dl>
             <details>

@@ -1,0 +1,22 @@
+{
+  "releaseKey": "site-release:2026-07-20:ledger-utopian-reference-dates-v1",
+  "entries": [
+    {
+      "eventKey": "site-release:ledger-utopian-reference-dates-v1",
+      "eventType": "site_correction",
+      "category": "platform",
+      "title": "Utopian dates established as the Ledger's civic reference",
+      "summary": "Each Transparency Ledger sequence now identifies its Utopian date as the primary Reference. The corresponding Gregorian date remains visible only as a clearly labeled equivalent for readers outside the Society's calendar.",
+      "actorName": "Utopian Society Corpus",
+      "occurredAt": "2026-07-20T02:59:54.143Z",
+      "utopianDate": "Minday, Solvane 11, Utopian Year 1",
+      "gregorianDate": "July 20, 2026",
+      "sourceLabel": "Utopian Society Corpus v2 ledger date hierarchy",
+      "sourceUrl": "https://utopiansocietycorpus.org/transparency-ledger",
+      "metadata": {
+        "primaryReference": "Utopian Society calendar",
+        "secondaryReference": "Gregorian equivalent"
+      }
+    }
+  ]
+}
