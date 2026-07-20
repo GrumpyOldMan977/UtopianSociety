@@ -47,7 +47,7 @@ const features: Record<string, Feature> = {
       { number: "81", title: "Contribution renewal", subtitle: "Within range", detail: "Participation, rest, retraining, unmet need, and unequal burdens are considered without converting productivity into citizenship value.", meta: "Minority finding open" },
       { number: "63", title: "Ecological resilience", subtitle: "Review requested", detail: "Soil, biodiversity, energy, waste, transport, and long-range risk require Custodianship evidence and public context before interpretation.", meta: "Revision due" },
     ],
-    note: "These values are illustrative local prototypes. A durable observatory must publish sources, methodology, confidence, dissent, revisions, and the people responsible for interpretation.",
+    note: "These values are illustrative previews. A durable observatory must publish sources, methodology, confidence, dissent, revisions, and the people responsible for interpretation.",
   },
   custodianship: {
     eyebrow: "The systems beneath daily life",

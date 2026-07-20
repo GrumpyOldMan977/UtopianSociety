@@ -16,7 +16,7 @@ const actions: Record<string, Action[]> = {
     {
       label: "Care request",
       title: "Prepare a care request",
-      description: "This local prototype helps organize a request. It is not an emergency service, diagnosis, medical record, or submission.",
+      description: "This non-persistent preview helps organize a request. It is not an emergency service, diagnosis, medical record, or submission.",
       fields: [
         { label: "Area of care", type: "select", options: ["Physical and preventive care", "Mental and emotional care", "Sexual or reproductive care", "Social or relational support", "End-of-life or Continuance conversation"] },
         { label: "Timing", type: "select", options: ["Routine", "Soon", "Urgent — seek available local emergency care now"] },
@@ -48,7 +48,7 @@ const actions: Record<string, Action[]> = {
         { label: "What may be shared?", type: "textarea", placeholder: "State the information and people you consent to include." },
         { label: "What repair would you like explored?", type: "textarea" },
       ],
-      result: "The local intake outline is ready. A real Harmony process would confirm safety and consent before contacting another person or scheduling a proceeding.",
+      result: "The intake outline is ready. A real Harmony process would confirm safety and consent before contacting another person or scheduling a proceeding.",
     },
     {
       label: "Proceedings calendar",
@@ -142,7 +142,7 @@ const actions: Record<string, Action[]> = {
       title: "Inspect an expiring crisis action",
       description: "Exceptional authority is legible through its source, purpose, responsible people, narrow powers, review, and automatic termination.",
       fields: [{ label: "Record", type: "select", options: ["No active Crisis Ring", "Weather response example", "Communications continuity example", "Evacuation support example"] }],
-      result: "Sample record: authority narrowly stated; rights limits published; Healing and Custodianship roles separated; public review scheduled; automatic expiration recorded. No active Crisis Ring exists in this local prototype.",
+      result: "Sample record: authority narrowly stated; rights limits published; Healing and Custodianship roles separated; public review scheduled; automatic expiration recorded. No active Crisis Ring exists in this preview.",
     },
     {
       label: "Training",
@@ -232,7 +232,7 @@ export function CivicActionStudio({ slug, initialAction = 0 }: { slug: string; i
 
   return <section className="civic-action-studio" id="civic-action-studio" aria-labelledby={`${slug}-studio-title`}>
     <div className="civic-action-heading">
-      <span className="eyebrow">Local civic prototype</span>
+      <span className="eyebrow">Civic service preview</span>
       <h2 id={`${slug}-studio-title`}>Practice the pathway without creating a record.</h2>
       <p>Everything here remains in this page only. It sends nothing, stores nothing, and does not imply that a real civic office has acted.</p>
     </div>

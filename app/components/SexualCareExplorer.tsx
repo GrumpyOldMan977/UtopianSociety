@@ -39,7 +39,7 @@ export function SexualCareExplorer() {
       </div>
     </section>
     <section className="sexual-pathfinder" id="care-pathfinder" aria-labelledby="sexual-pathfinder-title">
-      <header><span className="eyebrow">Private care pathfinder</span><h2 id="sexual-pathfinder-title">Begin with what you want—not what someone assumes.</h2><p>This local prototype helps you prepare a first conversation. It sends, stores, and diagnoses nothing.</p></header>
+      <header><span className="eyebrow">Private care pathfinder</span><h2 id="sexual-pathfinder-title">Begin with what you want—not what someone assumes.</h2><p>This private preview helps you prepare a first conversation. It sends, stores, and diagnoses nothing.</p></header>
       <div className="sexual-pathfinder-layout">
         <form onSubmit={buildBrief}>
           <label><span>What brings you here?</span><select value={need} onChange={(event) => { setNeed(event.target.value); setSubmitted(false); }}>{careNeeds.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>

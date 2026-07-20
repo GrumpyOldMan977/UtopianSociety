@@ -457,7 +457,7 @@ export default async function CorpusDocumentPage({ params }: { params: Promise<{
       <span>{ring.label} document {sequenceNumber} of {ringDocuments.length}</span>
       {document.movement && <b>{document.movement}</b>}
       {localDraft && <span className="local-draft-ribbon">{localDraft.edition} · {localDraft.status}</span>}
-      <span title={`Gregorian archival reference: ${gregorianRevision}`}>WordPress text last revised · {revisionLabel}</span>
+      <span title={`Gregorian archival reference: ${gregorianRevision}`}>Corpus text last revised · {revisionLabel}</span>
     </div>
 
     <div className="document-shell">
@@ -473,7 +473,6 @@ export default async function CorpusDocumentPage({ params }: { params: Promise<{
         </nav>}
         <div className="document-rail-links">
           {civicGateway && <Link className="document-source-link document-civic-link" href={civicGateway.href}>{civicGateway.label} →</Link>}
-          <a className="document-source-link" href={wordpressPage.link} target="_blank" rel="noreferrer">View original WordPress source ↗</a>
         </div>
       </aside>
 
@@ -482,10 +481,7 @@ export default async function CorpusDocumentPage({ params }: { params: Promise<{
         <div className="document-body" dangerouslySetInnerHTML={{ __html: html }} />
         <footer className="document-attestation">
           <span>Living corpus text</span>
-          {localDraft && <p className="draft-attestation">This is a local, visibly unratified reconciliation copy. Created date remains with the source document. Last Updated: {localDraft.updated} / {localDraft.gregorianUpdated}.</p>}
-          <p>{document.slug === "circle-of-contribution-charter"
-            ? "This reading copy draws from the published WordPress document, with Appendix VII restored from Circle of Contribution Charter."
-            : "This reading copy draws directly from the published WordPress document."}</p>
+          {localDraft && <p className="draft-attestation">This is a visibly unratified reconciliation copy. Created date remains with the governing document. Last Updated: {localDraft.updated} / {localDraft.gregorianUpdated}.</p>}
         </footer>
       </article>
     </div>

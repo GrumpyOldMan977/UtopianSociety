@@ -39,7 +39,7 @@ export function LearningCivicStudio() {
 
   return <section className="learning-studio" id="learning-studio" aria-labelledby="learning-studio-title">
     <div className="civic-section-heading civic-section-heading-light">
-      <span className="eyebrow">Interactive local prototype</span>
+      <span className="eyebrow">Interactive civic preview</span>
       <h2 id="learning-studio-title">Shape a path through the Tree of Knowledge.</h2>
       <p>This studio demonstrates how a citizen could begin a conversation with Learning. It makes a recommendation locally in this browser and sends nothing anywhere.</p>
     </div>

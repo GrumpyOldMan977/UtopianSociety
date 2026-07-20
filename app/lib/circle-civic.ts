@@ -97,7 +97,7 @@ export const civicProfiles: Record<string, CivicProfile> = {
     principle: "Care may be offered with skill and urgency; consent remains with the person receiving it.",
     dailyLife: ["Request routine or timely care without payment or rank.", "Choose a physical, emotional, sexual, reproductive, relational, or preventive pathway.", "State accessibility, privacy, contact, support-person, and consent preferences.", "Refuse, pause, change, or withdraw from care without surrendering dignity."],
     services: [
-      { title: "Request care", description: "Prepare a private, non-persistent request describing the kind of support and timing you need.", label: "Open local intake", href: "#civic-action-studio", state: "prototype" },
+      { title: "Request care", description: "Prepare a private, non-persistent request describing the kind of support and timing you need.", label: "Open care preview", href: "#civic-action-studio", state: "prototype" },
       { title: "Find a healing path", description: "Explore care domains and the kinds of healers, mentors, and settings associated with them.", label: "Explore pathways", href: "#whole-person-care", state: "available" },
       { title: "Consent and privacy", description: "Review the rights to informed choice, refusal, revocation, access, and narrow emergency intervention.", label: "Read your safeguards", href: "#consent-governs-care", state: "available" },
       { title: "Read the governing Charter", description: "Follow the Circle's authority, ethics, roles, education, substance rules, and oversight.", label: "Read the Charter", href: corpusPath("circle-of-healing-charter"), state: "available" },
@@ -118,9 +118,9 @@ export const civicProfiles: Record<string, CivicProfile> = {
     principle: "Everyone contributes; everyone eats. Measurement serves renewal, never domination.",
     dailyLife: ["Offer time or skill to an active civic need.", "Review a contribution rhythm and protected rest.", "Request retraining or reallocation with Learning support.", "See anonymized sector needs and renewal indicators."],
     services: [
-      { title: "Contribution profile", description: "Review roles, skills, mentorship, rest, and current civic participation.", label: "Open local prototype", href: "#civic-action-studio", state: "prototype" },
+      { title: "Contribution profile", description: "Review roles, skills, mentorship, rest, and current civic participation.", label: "Open profile preview", href: "#civic-action-studio", state: "prototype" },
       { title: "Sector needs", description: "See where help is requested without converting urgency into coercion.", label: "Open needs preview", href: "#civic-action-studio", state: "prototype" },
-      { title: "Request a new path", description: "Begin retraining or a supported change of vocation with Learning.", label: "Shape a local pathway", href: "#civic-action-studio", state: "prototype" },
+      { title: "Request a new path", description: "Begin retraining or a supported change of vocation with Learning.", label: "Shape a pathway", href: "#civic-action-studio", state: "prototype" },
       { title: "Read the governing Charter", description: "Examine contribution flow, safeguards, renewal, and mathematical foundations.", label: "Read the Charter", href: corpusPath("circle-of-contribution-charter"), state: "available" },
     ],
     relationships: [
@@ -139,7 +139,7 @@ export const civicProfiles: Record<string, CivicProfile> = {
     principle: "Peace is the presence of people willing to face conflict together.",
     dailyLife: ["Report harm or request mediation.", "Choose what information may be shared and with whom.", "See the schedule and status of a restorative proceeding.", "Read anonymized outcomes and procedural lessons in the public ledger."],
     services: [
-      { title: "Report harm", description: "A consent-led form for concerns, safety needs, requested remedy, and supporting evidence.", label: "Open local intake", href: "#civic-action-studio", state: "prototype" },
+      { title: "Report harm", description: "A consent-led form for concerns, safety needs, requested remedy, and supporting evidence.", label: "Open harm preview", href: "#civic-action-studio", state: "prototype" },
       { title: "Harmony calendar", description: "A public, privacy-preserving schedule of proceedings and open mediation times.", label: "Open the proceedings calendar", href: "/proceedings-calendar", state: "prototype" },
       { title: "Case path", description: "A private timeline showing intake, consent, evidence, conference, outcome, and appeal.", label: "Explore the process", href: "#civic-action-studio", state: "prototype" },
       { title: "Read restorative authority", description: "Follow the constitutional and Codex foundations for justice, repair, and review.", label: "Read the Restoration Codex", href: corpusPath("restoration-codex"), state: "available" },
@@ -161,7 +161,7 @@ export const civicProfiles: Record<string, CivicProfile> = {
     dailyLife: ["Read public capacity and sustainability indicators.", "Understand why a cross-Circle review was opened.", "Submit context that numerical models may have missed.", "Review recommendations, minority findings, and later corrections."],
     services: [
       { title: "State of balance", description: "Public indicators with human context, uncertainty, source, and revision history.", label: "Open System Review", href: "/system-review", state: "prototype" },
-      { title: "Request review", description: "Ask Balance to examine an emerging cross-system strain or overlooked consequence.", label: "Prepare local review", href: "/system-review#civic-action-studio", state: "prototype" },
+      { title: "Request review", description: "Ask Balance to examine an emerging cross-system strain or overlooked consequence.", label: "Prepare a review", href: "/system-review#civic-action-studio", state: "prototype" },
       { title: "Methods library", description: "Inspect formulas, assumptions, limitations, audits, and public challenges.", label: "Inspect a method", href: "/system-review#civic-action-studio", state: "prototype" },
       { title: "Read Continuance authority", description: "Review the constitutional basis for continuity and humane capacity planning.", label: "Read Article VII", href: corpusPath("article-vii-continuance-clause"), state: "available" },
     ],
@@ -181,7 +181,7 @@ export const civicProfiles: Record<string, CivicProfile> = {
     principle: "Caretakers of motion, never owners of the systems held in trust.",
     dailyLife: ["Report a repair, access, environmental, or infrastructure need.", "See service status and expected restoration time.", "Read water, energy, soil, transit, and resilience indicators.", "Inspect public maintenance history and technical provenance."],
     services: [
-      { title: "Request service", description: "Report a shared-system problem and follow its public, accountable path to resolution.", label: "Open local request", href: "#civic-action-studio", state: "prototype" },
+      { title: "Request service", description: "Report a shared-system problem and follow its public, accountable path to resolution.", label: "Open service preview", href: "#civic-action-studio", state: "prototype" },
       { title: "Living systems", description: "Read public infrastructure and ecological conditions without exposing private household data.", label: "Preview system status", href: "#civic-action-studio", state: "prototype" },
       { title: "Technical record", description: "Inspect decisions, maintenance, provenance, accessibility work, and later corrections.", label: "Preview the ledger", href: "#civic-action-studio", state: "prototype" },
       { title: "Read constitutional stewardship", description: "Follow the Society's environmental and governance foundations.", label: "Read Article XIII", href: corpusPath("article-xiii-environmental-stewardship"), state: "available" },
@@ -223,7 +223,7 @@ export const civicProfiles: Record<string, CivicProfile> = {
     principle: "Affirmation reveals value already present; it does not grant human worth.",
     dailyLife: ["Prepare a contribution for peer verification.", "See the evidence and criteria used in an affirmation.", "Add human context alongside quantitative confirmation.", "Request review when a process overlooked, distorted, or exposed a contribution unfairly."],
     services: [
-      { title: "Prepare an affirmation", description: "Describe a contribution, its civic purpose, and the witnesses or evidence that can confirm it.", label: "Open local prototype", href: "#civic-action-studio", state: "prototype" },
+      { title: "Prepare an affirmation", description: "Describe a contribution, its civic purpose, and the witnesses or evidence that can confirm it.", label: "Open affirmation preview", href: "#civic-action-studio", state: "prototype" },
       { title: "Recognition record", description: "Preview how verified contribution may appear without creating status, rank, or competition.", label: "Preview record", href: "#civic-action-studio", state: "prototype" },
       { title: "Request review", description: "Identify missing context, bias, privacy concerns, or procedural error for a later Harmony-supported review.", label: "Review prototype", href: "#civic-action-studio", state: "prototype" },
       { title: "Read the governing Charter", description: "Examine the human, procedural, and systemic layers of civic witness.", label: "Read the Charter", href: corpusPath("circle-of-affirmation-charter"), state: "available" },

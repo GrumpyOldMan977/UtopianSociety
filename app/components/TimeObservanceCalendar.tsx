@@ -77,7 +77,7 @@ export function TimeObservanceCalendar() {
       <div className="observance-selection" aria-live="polite">
         <small>Selected civic date</small>
         <strong>{WEEKDAYS[(selectedDay - 1) % WEEKDAYS.length]} · {selectedMonth[0]} {selectedDay}</strong>
-        <span>No mandatory observance is attached to this local prototype date. Published events will state purpose, accessibility, and voluntary participation.</span>
+        <span>No mandatory observance is attached to this preview date. Published events will state purpose, accessibility, and voluntary participation.</span>
       </div>
     </div>
     <div className="observance-kinds" aria-label="Observance and celestial-event guidance">
