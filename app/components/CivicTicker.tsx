@@ -62,7 +62,7 @@ export function CivicTicker() {
   const items = useMemo(() => {
     const population = payload?.population;
     const populationCopy = population
-      ? `Population · ${population.active.toLocaleString()} active virtual symbolic ${population.active === 1 ? "citizen" : "citizens"}${population.latestCitizen ? ` · latest: ${population.latestCitizen.civicName}` : ""}`
+      ? `Population: ${population.active.toLocaleString()}`
       : "Population · Awaiting the public Citizen Register";
     return [
       "BETA · Civic portal under active construction",
