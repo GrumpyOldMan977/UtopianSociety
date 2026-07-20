@@ -56,6 +56,7 @@ export default async function ImportedPostPage({ params }: { params: Promise<{ s
   const { html, contents } = prepareContent(post.content);
   const { newer, older } = adjacentPosts(post.slug);
   const type = post.categories.includes("Essays") ? "Essay" : "Working record";
+  const isLocalAnnouncement = post.id >= 1000000;
 
   return <main className="imported-post-page">
     <SiteHeader />
@@ -88,8 +89,8 @@ export default async function ImportedPostPage({ params }: { params: Promise<{ s
         <div className="post-body" id="post-authored-text" dangerouslySetInnerHTML={{ __html: html }} />
         <footer className="post-provenance">
           <span>Corpus provenance</span>
-          <p>Imported faithfully from the published WordPress edition. The local presentation has changed; the authored text and original publication date remain intact.</p>
-          <a href={post.sourceUrl} target="_blank" rel="noreferrer">View the source edition ↗</a>
+          <p>{isLocalAnnouncement ? "Published directly within the Utopian Society Corpus as part of the living working record." : "Imported faithfully from the published WordPress edition. The local presentation has changed; the authored text and original publication date remain intact."}</p>
+          <a href={post.sourceUrl} target="_blank" rel="noreferrer">{isLocalAnnouncement ? "View the public Build Week submission ↗" : "View the source edition ↗"}</a>
         </footer>
       </article>
     </div>

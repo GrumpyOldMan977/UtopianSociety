@@ -65,18 +65,22 @@ export function CivicTicker() {
       ? `Population: ${population.active.toLocaleString()}`
       : "Population · Awaiting the public Citizen Register";
     return [
-      "BETA · Civic portal under active construction",
-      populationCopy,
+      { label: "BETA · Civic portal under active construction" },
+      {
+        label: "Local News · The Utopian Society enters OpenAI Build Week · View the public submission",
+        href: "https://devpost.com/software/the-utopian-society",
+      },
+      { label: populationCopy },
       payload?.weather
-        ? `South Pacific Gyre · ${payload.weather.temperatureF}°F · ${payload.weather.condition} · wind ${payload.weather.windDirection} ${payload.weather.windMph} mph${payload.weather.seaTemperatureF !== null ? ` · sea ${payload.weather.seaTemperatureF}°F` : ""}${payload.weather.waveHeightFt !== null ? ` · swell ${payload.weather.waveHeightFt} ft` : ""}`
-        : "South Pacific Gyre · Awaiting the next open-ocean observation",
-      now ? `Utopian Reference Time · ${civicTime(now)}` : "Utopian Reference Time · Synchronizing",
-      "Public record · Transparency Ledger operational",
-      ...(payload?.headlines ?? []).map((headline) => `World · ${headline.title}`),
+        ? { label: `South Pacific Gyre · ${payload.weather.temperatureF}°F · ${payload.weather.condition} · wind ${payload.weather.windDirection} ${payload.weather.windMph} mph${payload.weather.seaTemperatureF !== null ? ` · sea ${payload.weather.seaTemperatureF}°F` : ""}${payload.weather.waveHeightFt !== null ? ` · swell ${payload.weather.waveHeightFt} ft` : ""}` }
+        : { label: "South Pacific Gyre · Awaiting the next open-ocean observation" },
+      { label: now ? `Utopian Reference Time · ${civicTime(now)}` : "Utopian Reference Time · Synchronizing" },
+      { label: "Public record · Transparency Ledger operational", href: "/transparency-ledger" },
+      ...(payload?.headlines ?? []).map((headline) => ({ label: `World · ${headline.title}`, href: headline.url })),
     ];
   }, [now, payload]);
 
-  const duration = `${Math.max(58, items.join(" ").length * 0.16)}s`;
+  const duration = `${Math.max(58, items.map((item) => item.label).join(" ").length * 0.16)}s`;
 
   return (
     <section className="civic-ticker" aria-label="Live civic wire">
@@ -84,10 +88,10 @@ export function CivicTicker() {
       <div className="ticker-window">
         <div className="ticker-track" aria-hidden="true" style={{ "--ticker-duration": duration } as CSSProperties}>
           {[0, 1].map((copy) => <span className="ticker-copy" key={copy}>
-            {items.map((item, index) => <span className="ticker-item" key={`${copy}-${index}`}><b>◆</b>{item}</span>)}
+            {items.map((item, index) => <span className="ticker-item" key={`${copy}-${index}`}><b>◆</b>{item.href ? <a href={item.href} target={item.href.startsWith("http") ? "_blank" : undefined} rel={item.href.startsWith("http") ? "noreferrer" : undefined}>{item.label}</a> : item.label}</span>)}
           </span>)}
         </div>
-        <p className="ticker-a11y" aria-live="polite">{items.join(". ")}</p>
+        <p className="ticker-a11y" aria-live="polite">{items.map((item) => item.label).join(". ")}</p>
       </div>
       <span className="ticker-credit">
         <a href="/transparency-ledger">Ledger: Civic Portal</a>

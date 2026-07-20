@@ -1,5 +1,23 @@
 [
   {
+    "id": 1000001,
+    "slug": "the-utopian-society-enters-openai-build-week",
+    "title": "The Utopian Society Enters OpenAI Build Week",
+    "date": "2026-07-20T12:00:00",
+    "modified": "2026-07-20T12:00:00",
+    "dateLabel": "July 20, 2026",
+    "author": "Adreto Nagdo Senoviros",
+    "categories": ["Utopian Society", "Site Updates"],
+    "tags": ["OpenAI Build Week", "Codex", "GPT-5.6", "Civic Portal", "Website Beta"],
+    "excerpt": "The Utopian Society Corpus has entered OpenAI Build Week. What began as a body of governance, philosophy, and lore now stands as a public beta civic portal—a place where the imagined Society can be read, explored, and increasingly experienced.",
+    "content": "<h2>From corpus to civic portal</h2><p>The Utopian Society has been submitted to <a href=\"https://devpost.com/software/the-utopian-society\" target=\"_blank\" rel=\"noreferrer\">OpenAI Build Week</a>.</p><p>The work began in 2025 as writing: a Declaration, Constitution, Articles, Charters, Codices, essays, and the still-growing lore of <em>Robyn’s Journey</em>. In early 2026, the first website made that corpus publicly readable. During Build Week, the project crossed another threshold. The website became the beta version of a civic portal—an interface intended not only to describe the Society, but to demonstrate how a citizen might encounter and use it.</p><h2>What the beta demonstrates</h2><p>The new frontispiece uses an interwoven Celtic ring system to move through the corpus and its civic structure. At its center, Utopian Reference Time and the living calendar translate the Society’s own standard of time.</p><p>The portal now includes the seven Foundational Circles, citizen-facing experiences for Learning, Healing, and Immigration, a one-hundred-question civic assessment, voluntary oath, printable certificate of virtual symbolic naturalization, a live population count, and a public Transparency Ledger. The Blogs &amp; Essays archive has also been brought into the new design with optional browser-based read-aloud.</p><p>Codex and GPT-5.6 helped turn years of interconnected writing into a coherent information architecture, reconcile continuity problems across the governmental texts, implement the interface, and carry the project from local prototype to public deployment. The vision and constitutional authorship remain human; the implementation became a sustained collaboration.</p><h2>A public beta, not a finished nation</h2><p>This submission is a milestone rather than a declaration of completion. Several civic functions remain prototypes. Durable records, additional Circle services, accessibility refinement, and the unpublished lore still lie ahead.</p><p>But the central proposition can now be experienced: a speculative society’s governance need not remain trapped in static documents. It can become a legible, navigable, accountable civic environment.</p><p><a href=\"https://devpost.com/software/the-utopian-society\" target=\"_blank\" rel=\"noreferrer\"><strong>Visit the public OpenAI Build Week submission →</strong></a></p>",
+    "featuredImage": null,
+    "featuredAlt": "The Utopian Society Corpus frontispiece",
+    "sourceUrl": "https://devpost.com/software/the-utopian-society",
+    "readingMinutes": 2,
+    "wordCount": 337
+  },
+  {
     "id": 639,
     "slug": "the-fornax",
     "title": "The Fornax",

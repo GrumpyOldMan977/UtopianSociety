@@ -1,0 +1,22 @@
+{
+  "releaseKey": "site-release:2026-07-20:build-week-announcement-v1",
+  "entries": [
+    {
+      "eventKey": "site-release:build-week-announcement-v1",
+      "eventType": "publication",
+      "category": "platform",
+      "title": "OpenAI Build Week submission announced",
+      "summary": "The public OpenAI Build Week submission is now carried as Local News on the frontispiece civic wire and documented in a new Blogs & Essays announcement describing the Corpus's development into a beta civic portal.",
+      "actorName": "Utopian Society Corpus",
+      "occurredAt": "2026-07-20T17:00:00.000Z",
+      "utopianDate": "Minday, Solvane 11, Utopian Year 1",
+      "gregorianDate": "July 20, 2026",
+      "sourceLabel": "The Utopian Society enters OpenAI Build Week",
+      "sourceUrl": "https://utopiansocietycorpus.org/blogs-essays/the-utopian-society-enters-openai-build-week",
+      "metadata": {
+        "submissionUrl": "https://devpost.com/software/the-utopian-society",
+        "publicationType": "local_news_and_blog_announcement"
+      }
+    }
+  ]
+}
