@@ -74,6 +74,25 @@
 .post-vellum:before{top:-24px}.post-vellum:after{bottom:-24px}
 .post-vellum-knot{height:30px;margin:0 auto 55px;display:flex;justify-content:center;gap:0;opacity:.58}
 .post-vellum-knot i{width:26px;height:26px;margin:0 -3px;border:1px solid #9f773e;transform:rotate(45deg)}
+.read-aloud{position:relative;margin:0 0 65px;padding:30px;border:1px solid rgba(143,105,53,.42);background:linear-gradient(135deg,rgba(14,52,43,.98),rgba(7,35,29,.96));color:#f2eadc;box-shadow:0 15px 35px rgba(49,39,24,.13)}
+.read-aloud:before{content:"";position:absolute;inset:7px;border:1px solid rgba(211,181,111,.18);pointer-events:none}
+.read-aloud-heading{position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding-bottom:22px;border-bottom:1px solid rgba(211,181,111,.22)}
+.read-aloud-kicker{display:block;color:#d4b66f;font-size:10px;font-weight:850;letter-spacing:.14em;text-transform:uppercase}
+.read-aloud h2{margin:8px 0 0;color:#f2eadc;font:500 29px/1.05 Georgia,serif;letter-spacing:-.025em}
+.read-aloud-state{padding:7px 9px;border:1px solid rgba(211,181,111,.32);color:#d9c38f;font-size:9px;font-weight:850;letter-spacing:.12em;text-transform:uppercase}
+.read-aloud-state.is-playing{background:rgba(211,181,111,.14);color:#f1d58f}
+.read-aloud-settings{position:relative;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(145px,.5fr);gap:14px;margin-top:22px}
+.read-aloud-settings label>span{display:block;margin-bottom:7px;color:rgba(242,234,220,.66);font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.read-aloud select{width:100%;min-height:44px;padding:10px 34px 10px 12px;border:1px solid rgba(211,181,111,.35);border-radius:0;background:#123b32;color:#f3e9d7;font:500 14px Georgia,serif;color-scheme:dark}
+.read-aloud select:focus-visible,.read-aloud button:focus-visible{outline:2px solid #e4c979;outline-offset:3px}
+.read-aloud-actions{position:relative;display:flex;gap:10px;margin-top:19px}
+.read-aloud button{min-height:44px;padding:11px 17px;border:1px solid #c9a75d;font-size:10px;font-weight:850;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:background .18s,color .18s,border-color .18s}
+.read-aloud button span{margin-right:6px}
+.read-aloud-primary{background:#d0af66;color:#092a23}.read-aloud-primary:hover{background:#ead28e}
+.read-aloud-secondary{background:transparent;color:#dcc685}.read-aloud-secondary:hover{background:rgba(211,181,111,.1)}
+.read-aloud button:disabled{cursor:not-allowed;opacity:.42}
+.read-aloud-status{position:relative;margin:18px 0 0!important;color:#e3d3ad!important;font:italic 14px/1.5 Georgia,serif!important}
+.read-aloud-note{position:relative;margin:7px 0 0!important;color:rgba(242,234,220,.48)!important;font:400 11px/1.5 Inter,ui-sans-serif,system-ui,sans-serif!important}
 .post-body{color:#34372f;font:400 19px/1.82 Georgia,"Times New Roman",serif;overflow-wrap:anywhere}
 .post-body>*:first-child{margin-top:0}
 .post-body p{margin:0 0 1.5em}
@@ -131,6 +150,7 @@
   .post-frontispiece{min-height:760px;padding:135px 25px 115px;align-items:flex-end}.post-frontispiece-art{background-position:center}.post-frontispiece-shade{background:linear-gradient(180deg,rgba(5,25,20,.2),rgba(5,25,20,.96) 55%)}
   .post-frontispiece-copy h1{font-size:clamp(48px,14vw,76px)}.post-frontispiece-copy dl{gap:15px}.post-frontispiece-copy dl>div{padding:0 15px}.post-return{left:25px;right:auto;bottom:35px}
   .post-reading-field{grid-template-columns:1fr;padding:65px 18px 80px}.post-marginalia{position:static;padding:25px}.post-marginalia nav{display:grid;grid-template-columns:1fr 1fr}.post-vellum{padding:50px 30px}.post-body{font-size:18px}.post-body .alignwide,.post-body .alignfull{width:100%;margin-left:0;transform:none}
+  .read-aloud{margin-bottom:50px;padding:25px}.read-aloud-settings{grid-template-columns:1fr}.read-aloud-heading{align-items:flex-start}.read-aloud-actions{flex-wrap:wrap}
   .post-sequence{grid-template-columns:1fr}.post-sequence>a{min-height:150px;border-right:0;border-bottom:1px solid rgba(222,193,126,.2)}
 }
 @media(max-width:480px){

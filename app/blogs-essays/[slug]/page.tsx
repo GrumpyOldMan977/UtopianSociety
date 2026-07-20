@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "../../components/SiteHeader";
+import { ReadAloudControls } from "../../components/ReadAloudControls";
 import { adjacentPosts, getImportedPost, importedPosts, postDisplayImage, postPath } from "../../lib/imported-posts";
 
 type ContentsEntry = { id: string; label: string; level: number };
@@ -83,7 +84,8 @@ export default async function ImportedPostPage({ params }: { params: Promise<{ s
       </aside>
       <article className="post-vellum">
         <div className="post-vellum-knot" aria-hidden="true"><i /><i /><i /><i /></div>
-        <div className="post-body" dangerouslySetInnerHTML={{ __html: html }} />
+        <ReadAloudControls targetId="post-authored-text" title={post.title} />
+        <div className="post-body" id="post-authored-text" dangerouslySetInnerHTML={{ __html: html }} />
         <footer className="post-provenance">
           <span>Corpus provenance</span>
           <p>Imported faithfully from the published WordPress edition. The local presentation has changed; the authored text and original publication date remain intact.</p>
