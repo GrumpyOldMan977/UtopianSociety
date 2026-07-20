@@ -1,0 +1,23 @@
+{
+  "releaseKey": "site-release:2026-07-20:ledger-utc-status-v1",
+  "entries": [
+    {
+      "eventKey": "site-release:ledger-utc-status-v1",
+      "eventType": "site_correction",
+      "category": "platform",
+      "title": "Transparency Ledger synchronized to Utopian Reference Time",
+      "summary": "The live-record status now displays its last verification time explicitly in 24-hour UTC instead of inheriting each visitor's local timezone, keeping the public record aligned with the Society's common reference time.",
+      "actorName": "Utopian Society Corpus",
+      "occurredAt": "2026-07-20T02:35:12.101Z",
+      "utopianDate": "Minday, Solvane 11, Utopian Year 1",
+      "gregorianDate": "July 20, 2026",
+      "sourceLabel": "Utopian Society Corpus v2 UTC ledger status",
+      "sourceUrl": "https://utopiansocietycorpus.org/transparency-ledger",
+      "metadata": {
+        "displayStandard": "UTC",
+        "format": "24-hour",
+        "refreshSeconds": 30
+      }
+    }
+  ]
+}

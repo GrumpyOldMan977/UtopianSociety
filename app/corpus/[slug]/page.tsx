@@ -4,6 +4,7 @@ import { SiteHeader } from "../../components/SiteHeader";
 import { corpusDocuments, corpusPath, getCorpusDocument, getRingDocuments, type CorpusDocument } from "../../lib/corpus-documents";
 import { getConstitutionalDraft } from "../../lib/constitutional-draft-v22";
 import { gregorianDateUTC, utopianDate } from "../../lib/utopian-time";
+import wordpressPages from "../../data/wordpress-pages.json";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,23 @@ type WordPressPage = {
   link: string;
   modified_gmt: string;
 };
+
+type WordPressPageSnapshot = {
+  slug: string;
+  title: string;
+  content_html: string;
+  link: string;
+  modified_gmt: string;
+};
+
+const publishedPages = new Map(
+  (wordpressPages as WordPressPageSnapshot[]).map((page) => [page.slug, {
+    title: { rendered: page.title },
+    content: { rendered: page.content_html },
+    link: page.link,
+    modified_gmt: page.modified_gmt,
+  } satisfies WordPressPage]),
+);
 
 type ContentsEntry = { id: string; label: string; level: number };
 
@@ -395,20 +413,13 @@ function prepareWordPressContent(source: string, documentKind: CorpusDocument["k
   return { html, contents };
 }
 
-async function loadWordPressPage(slug: string): Promise<WordPressPage | null> {
-  const response = await fetch(`https://utopiansocietycorpus.org/wp-json/wp/v2/pages?slug=${encodeURIComponent(slug)}&_fields=title,content,link,modified_gmt`);
-  if (!response.ok) return null;
-  const pages = await response.json() as WordPressPage[];
-  return pages[0] || null;
-}
-
 export default async function CorpusDocumentPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const document = getCorpusDocument(slug);
   if (!document) notFound();
 
   const localDraft = getConstitutionalDraft(document.slug);
-  const publishedPage = await loadWordPressPage(document.slug);
+  const publishedPage = publishedPages.get(document.slug) ?? null;
   if (!publishedPage && !localDraft) notFound();
   const wordpressPage: WordPressPage = publishedPage ?? {
     title: { rendered: document.title },
