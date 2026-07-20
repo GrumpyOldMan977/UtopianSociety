@@ -1,0 +1,26 @@
+{
+  "sequence": 0,
+  "eventKey": "site-history:alpha-launch:2026-02-18",
+  "eventType": "site_created",
+  "category": "site_change",
+  "title": "Utopian Society Corpus alpha website launched",
+  "summary": "The alpha website was developed and launched with governance texts, blog posts, and essays forming its initial public corpus. Continued site development was already planned.",
+  "actorName": "Adreto Nagdo Senoviros",
+  "subjectName": "Utopian Society Corpus",
+  "subjectRef": "Alpha website",
+  "occurredAt": "2026-02-18T00:00:00.000Z",
+  "utopianDate": "The Founding Interval",
+  "gregorianDate": "February 18, 2026",
+  "sourceLabel": "Utopian Society Corpus alpha website",
+  "sourceUrl": "https://utopiansocietycorpus.org/",
+  "metadata": {
+    "siteVersion": "alpha",
+    "initialScope": [
+      "governance texts",
+      "blog posts",
+      "essays"
+    ],
+    "historicalBackfill": true
+  },
+  "recordedAt": "2026-07-20T00:27:24.153Z"
+}
