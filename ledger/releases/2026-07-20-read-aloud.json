@@ -1,0 +1,25 @@
+{
+  "releaseKey": "site-release:2026-07-20:read-aloud-v1",
+  "entries": [
+    {
+      "eventKey": "site-release:read-aloud-v1",
+      "eventType": "accessibility_release",
+      "category": "platform",
+      "title": "Read-aloud access published across Blogs & Essays",
+      "summary": "The public Blogs & Essays reading copies now provide browser-based narration with selectable device voices, adjustable speaking speed, play, pause, resume, stop, progress, and accessible status controls. Narration is limited to the authored text and does not retain reader activity or require an external speech service.",
+      "actorName": "Utopian Society Corpus",
+      "occurredAt": "2026-07-20T07:25:00.000Z",
+      "utopianDate": "Minday, Solvane 11, Utopian Year 1",
+      "gregorianDate": "July 20, 2026",
+      "sourceLabel": "Utopian Society Corpus v2 read-aloud release",
+      "sourceUrl": "https://utopiansocietycorpus.org/blogs-essays",
+      "metadata": {
+        "siteVersion": 12,
+        "commit": "d3a45d2e9f79c6a6525a96416a74fc1c9868c0f9",
+        "validation": "15 of 15 rendered-route tests passed",
+        "speechEngine": "browser Web Speech API",
+        "retainedReaderData": false
+      }
+    }
+  ]
+}

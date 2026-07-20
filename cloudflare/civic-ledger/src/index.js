@@ -327,6 +327,33 @@ async function registerRelease(env, input) {
   return { releaseKey, entries };
 }
 
+async function syncPublicReleaseManifests(env) {
+  const listResponse = await fetch("https://api.github.com/repos/GrumpyOldMan977/UtopianSociety/contents/ledger/releases?ref=main", {
+    headers: {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "Utopian-Society-Civic-Ledger",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  });
+  if (!listResponse.ok) throw new Error(`Release manifest listing failed with HTTP ${listResponse.status}.`);
+  const files = await listResponse.json();
+  if (!Array.isArray(files)) throw new Error("Release manifest listing was not an array.");
+
+  let created = 0;
+  let existing = 0;
+  for (const file of files.filter((item) => item?.type === "file" && item.name?.endsWith(".json"))) {
+    const manifestResponse = await fetch(file.download_url, {
+      headers: { Accept: "application/json", "User-Agent": "Utopian-Society-Civic-Ledger" },
+    });
+    if (!manifestResponse.ok) throw new Error(`Release manifest ${file.name} failed with HTTP ${manifestResponse.status}.`);
+    const result = await registerRelease(env, await manifestResponse.json());
+    created += result.entries.filter((entry) => entry.created).length;
+    existing += result.entries.filter((entry) => !entry.created).length;
+  }
+  console.log(JSON.stringify({ level: "info", message: "public-release-manifests-synchronized", created, existing }));
+  return { created, existing };
+}
+
 async function listLedger(request, env, url) {
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 25));
   const cursor = Number(url.searchParams.get("cursor")) || Number.MAX_SAFE_INTEGER;
@@ -586,6 +613,9 @@ const civicLedgerWorker = {
       const status = error instanceof SyntaxError ? 400 : 500;
       return json(request, { error: status === 400 ? "Invalid JSON request." : "The civic record could not complete this request." }, { status });
     }
+  },
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(syncPublicReleaseManifests(env));
   },
 };
 
