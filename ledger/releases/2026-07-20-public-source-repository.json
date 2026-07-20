@@ -1,0 +1,24 @@
+{
+  "releaseKey": "site-release:2026-07-20:public-source-repository-v1",
+  "entries": [
+    {
+      "eventKey": "site-release:public-source-repository-v1",
+      "eventType": "platform_release",
+      "category": "platform",
+      "title": "Build Week source repository opened for public review",
+      "summary": "The Utopian Society Civic Portal source, timestamped Build Week history, testing instructions, infrastructure code, and Codex/GPT-5.6 collaboration record were published for public inspection. Software is provided under GPLv3 while the civic corpus and artwork retain separate content rights.",
+      "actorName": "Utopian Society Corpus",
+      "occurredAt": "2026-07-20T05:01:43.994Z",
+      "utopianDate": "Minday, Solvane 11, Utopian Year 1",
+      "gregorianDate": "July 20, 2026",
+      "sourceLabel": "Utopian Society Civic Portal public source repository",
+      "sourceUrl": "https://github.com/GrumpyOldMan977/UtopianSociety",
+      "metadata": {
+        "repository": "GrumpyOldMan977/UtopianSociety",
+        "visibility": "public",
+        "codeLicense": "GNU GPL v3.0",
+        "contentRights": "Copyright retained except where expressly stated"
+      }
+    }
+  ]
+}
