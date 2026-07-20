@@ -1,0 +1,23 @@
+{
+  "releaseKey": "site-release:2026-07-20:ticker-population-label-v1",
+  "entries": [
+    {
+      "eventKey": "site-release:ticker-population-label-v1",
+      "eventType": "interface_refinement",
+      "category": "platform",
+      "title": "Population ticker simplified",
+      "summary": "The frontispiece ticker now presents the live civic count simply as ‘Population: #’. The fuller virtual symbolic citizenship context remains available within Immigration, where it belongs, while the shared ticker stays concise.",
+      "actorName": "Utopian Society Corpus",
+      "occurredAt": "2026-07-20T07:58:13.779Z",
+      "utopianDate": "Minday, Solvane 11, Utopian Year 1",
+      "gregorianDate": "July 20, 2026",
+      "sourceLabel": "Utopian Society Corpus v2 population ticker",
+      "sourceUrl": "https://utopiansocietycorpus.org/",
+      "metadata": {
+        "siteVersion": 13,
+        "commit": "f7b1fbef44be0daa01ac824fb3fd58fb08046e6c",
+        "displayFormat": "Population: #"
+      }
+    }
+  ]
+}
