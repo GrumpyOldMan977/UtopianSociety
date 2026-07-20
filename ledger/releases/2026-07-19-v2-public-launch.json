@@ -1,0 +1,25 @@
+{
+  "releaseKey": "site-release:2026-07-19:v2-public-launch",
+  "entries": [
+    {
+      "eventKey": "site-release:c1da419:v2-public-launch",
+      "eventType": "site_publication",
+      "category": "platform",
+      "title": "Utopian Society Corpus v2 publicly launched",
+      "summary": "The redesigned Corpus, seven-Circle civic portal, imported writings, living Utopian calendar, public Transparency Ledger, and non-persistent civic previews were released as one unified public experience. Development-only copy was removed, the existing Celtic visual system and unique civic artwork were carried through the release, and the canonical domain was transferred to the validated production build while the original WordPress source remained preserved as a fallback.",
+      "actorName": "Utopian Society Corpus",
+      "occurredAt": "2026-07-19T23:59:00.000Z",
+      "utopianDate": "Conceptday, Solvane 10, Utopian Year 1",
+      "gregorianDate": "July 19, 2026",
+      "sourceLabel": "Utopian Society Corpus v2 public release",
+      "sourceUrl": "https://utopiansocietycorpus.org/",
+      "metadata": {
+        "commit": "c1da41914dc9fd034b53d06ac161c7cf7bc35db5",
+        "validation": "15 of 15 rendered-route tests passed",
+        "canonicalDomain": "utopiansocietycorpus.org",
+        "publicSite": "Sites",
+        "civicServices": "Cloudflare Worker"
+      }
+    }
+  ]
+}
