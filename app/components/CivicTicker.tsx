@@ -65,7 +65,7 @@ export function CivicTicker() {
       ? `Population: ${population.active.toLocaleString()}`
       : "Population · Awaiting the public Citizen Register";
     return [
-      { label: "BETA · Public site frozen for review, updates planned August 6th once judging completes." },
+      { label: "BETA · Public site frozen for review, updates planned Spiraday, Solvane 28, Utopian Year 1, once judging completes." },
       {
         label: "Local News · The Utopian Society enters OpenAI Build Week · View the public submission",
         href: "https://devpost.com/software/the-utopian-society",
