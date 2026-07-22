@@ -67,6 +67,9 @@ export function CivicTicker() {
     return [
       { label: "BETA · Civic portal under active construction" },
       {
+        label: "Judging Notice · Public site frozen for review · Local development continues · Next public update: Spiraday, Solvane 28, Utopian Year 1",
+      },
+      {
         label: "Local News · The Utopian Society enters OpenAI Build Week · View the public submission",
         href: "https://devpost.com/software/the-utopian-society",
       },
