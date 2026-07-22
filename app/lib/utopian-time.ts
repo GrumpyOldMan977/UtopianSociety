@@ -113,3 +113,9 @@ export function gregorianDateUTC(date: Date) {
     year: "numeric",
   }).format(date);
 }
+
+export function utopianDateLong(date: Date) {
+  const civicDate = utopianDate(date);
+  if (civicDate.year === null) return "The Founding Interval";
+  return `${civicDate.weekday}, ${civicDate.month} ${civicDate.day}, ${civicDate.yearLabel}`;
+}

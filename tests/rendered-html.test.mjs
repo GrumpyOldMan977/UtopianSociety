@@ -170,6 +170,8 @@ test("server-renders the complete West Ring archive with local post routes", asy
   assert.match(html, /href="\/blogs-essays\/the-fornax"/);
   assert.match(html, /href="\/blogs-essays\/an-introspection-into-my-identity"/);
   assert.match(html, /The whole working record/);
+  assert.match(html, /Minday, Solvane 11, Utopian Year 1/);
+  assert.match(html, /Percepday, Solvane 6, Utopian Year 1/);
 });
 
 test("server-renders imported essays in the new local manuscript template", async () => {

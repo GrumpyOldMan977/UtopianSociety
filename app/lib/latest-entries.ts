@@ -11,7 +11,7 @@ export type LatestEntry = {
 export async function getLatestEntries(): Promise<LatestEntry[]> {
   return importedPosts.slice(0, 5).map((post) => ({
     title: post.title,
-    date: post.dateLabel,
+    date: post.utopianDateLabel,
     href: postPath(post.slug),
     excerpt: post.excerpt,
     image: postDisplayImage(post),

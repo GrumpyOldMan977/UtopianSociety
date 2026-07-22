@@ -1,4 +1,5 @@
 import postData from "../data/wordpress-posts.json";
+import { gregorianDateUTC, utopianDateLong } from "./utopian-time";
 
 export type ImportedPost = {
   id: number;
@@ -28,10 +29,17 @@ const decodeDisplayText = (value: string) => value
   .replaceAll("&rdquo;", "”")
   .replaceAll("&ldquo;", "“");
 
+function publicationDate(value: string) {
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 12));
+}
+
 export const importedPosts = (postData as ImportedPost[]).map((post) => ({
   ...post,
   title: decodeDisplayText(post.title),
   excerpt: decodeDisplayText(post.excerpt),
+  utopianDateLabel: utopianDateLong(publicationDate(post.date)),
+  gregorianDateLabel: gregorianDateUTC(publicationDate(post.date)),
 }));
 
 export const postPath = (slug: string) => `/blogs-essays/${slug}`;

@@ -70,7 +70,7 @@ export default async function ImportedPostPage({ params }: { params: Promise<{ s
         <p>{post.excerpt}</p>
         <dl>
           <div><dt>Written by</dt><dd>{post.author}</dd></div>
-          <div><dt>Published</dt><dd>{post.dateLabel}</dd></div>
+          <div><dt>Published</dt><dd title={`Gregorian archival reference: ${post.gregorianDateLabel}`}>{post.utopianDateLabel}</dd></div>
           <div><dt>Reading time</dt><dd>{post.readingMinutes} minutes</dd></div>
         </dl>
       </div>

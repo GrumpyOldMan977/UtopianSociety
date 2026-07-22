@@ -24,7 +24,7 @@ export default async function BlogsPage() {
           return <Link href={postPath(post.slug)} className={image ? "archive-post has-image" : "archive-post"} key={post.id}>
             <span className="archive-post-art" style={image ? { backgroundImage: `linear-gradient(180deg, transparent, rgba(5,28,23,.7)), url("${image}")` } : undefined} aria-hidden="true"><b>{String(index + 1).padStart(2, "0")}</b></span>
             <span className="archive-post-copy">
-              <small>{post.categories.includes("Essays") ? "Essay" : "Working record"} · {post.dateLabel}</small>
+              <small>{post.categories.includes("Essays") ? "Essay" : "Working record"} · {post.utopianDateLabel}</small>
               <strong>{post.title}</strong>
               <p>{post.excerpt}</p>
               <i>{post.readingMinutes} min read →</i>
