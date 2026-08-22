@@ -1,0 +1,32 @@
+{
+  "releaseKey": "site-release:2026-08-22:post-judging-civic-wire",
+  "entries": [
+    {
+      "eventKey": "site-release:c246b22:post-judging-civic-wire",
+      "eventType": "interface_update",
+      "category": "platform",
+      "title": "Civic wire updated after Build Week judging",
+      "summary": "The public civic wire now reports that Version 3 is live, OpenAI Build Week judging has concluded, and results are awaited. The existing Local News item, live World headlines, South Pacific Gyre weather, population, and Utopian Reference Time feeds remain unchanged.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "The Utopian Society civic wire",
+      "subjectRef": "interface:civic-wire",
+      "occurredAt": "2026-08-22T19:51:05.000Z",
+      "utopianDate": "Kineticday, Aura 16, Utopian Year 1",
+      "gregorianDate": "August 22, 2026",
+      "sourceLabel": "The Utopian Society public civic wire",
+      "sourceUrl": "https://utopiansocietycorpus.org/",
+      "metadata": {
+        "version": "3",
+        "commit": "c246b2250169354b91831fb1398d5ca7ed14dfe2",
+        "status": "judging_complete_awaiting_results",
+        "preservedFeeds": [
+          "Local News",
+          "World headlines",
+          "South Pacific Gyre weather",
+          "Population",
+          "Utopian Reference Time"
+        ]
+      }
+    }
+  ]
+}
