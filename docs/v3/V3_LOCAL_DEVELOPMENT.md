@@ -1,14 +1,14 @@
 # Utopian Society v3 Local Development
 
-## Safety boundary
+## Safety boundary and production status
 
-The public beta remains frozen for OpenAI Build Week judging. v3 development is local only until a reviewed release is authorized after Spiraday, Solvane 28, Utopian Year 1.
+OpenAI Build Week judging has concluded. The reviewed v3 public renderer and civic Worker were released on Kineticday, Aura 16, Utopian Year 1 (August 22, 2026). Further development remains local until it passes review and receives a separate release authorization.
 
 - The unified local website is `http://localhost:9877`.
 - The civic Worker is an internal local service at `http://127.0.0.1:8788`.
 - Pages such as `/portal` and `/editorial` belong to the same website on port 9877; browser-visible navigation must never send a visitor to port 8788.
 - The local D1 database is separate from production.
-- The editorial bridge inventories WordPress and prepares manifests, but it contains no authenticated WordPress write path.
+- The production editorial bridge reads from WordPress every five minutes and caches synchronized publications in D1. It contains no general authenticated WordPress write path; WordPress and Jetpack remain the authoring clients.
 
 ## Shared civic objects
 
@@ -42,17 +42,21 @@ Passing requires both:
 
 ## Editorial continuity
 
-WordPress remains the intended public editorial surface so Jetpack statistics and Android publishing can be restored without creating a second public archive.
+WordPress is the canonical editorial origin and retains the established WordPress.com and Jetpack authoring surface without creating a second editorial archive. The public custom domain renders the synchronized content through the new site.
 
-The local Editorial Studio can:
+The Editorial Studio can:
 
 - inventory the current WordPress posts and their featured images;
 - draft posts using the Society's civic author identity;
 - create local ticker notices;
 - assign visible Utopian dates while retaining Gregorian dates only as archival references; and
-- download a reviewed WordPress handoff manifest.
+- download a reviewed WordPress handoff manifest;
+- report the latest WordPress synchronization state; and
+- request an authorized manual synchronization.
 
-The handoff manifest is not a publisher. It reports `remoteWritesEnabled: false` and contains the precise fields that must be reviewed before a future authenticated WordPress action is designed.
+The handoff manifest is not a publisher. It reports `remoteWritesEnabled: false` and contains the precise fields that must be reviewed before a future authenticated WordPress action is designed. Ordinary publishing remains in WordPress; the bridge imports published material by WordPress post identity and modification time.
+
+The WordPress statistics endpoint is available again, but those totals cover the WordPress-connected origin. Public application-route traffic is recorded by the separate aggregate first-party analytics stream. The two sources must remain visibly labeled and must not be summed.
 
 ## Local commands
 

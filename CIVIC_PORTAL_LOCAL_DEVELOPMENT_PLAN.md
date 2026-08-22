@@ -1,9 +1,26 @@
 # Utopian Society Civic Portal — Local Development Plan
 
-**Status:** Draft 1.1  
-**Work mode:** Local development only during OpenAI Build Week judging  
-**Production baseline:** Frozen except for the published judging notice  
-**Earliest scheduled public update:** Spiraday, Solvane 28, Utopian Year 1 (Gregorian reference: August 6, 2026)
+**Status:** Draft 1.1 with production implementation record
+
+**Work mode:** Public v3 released; continuing development remains local until reviewed
+
+**Production baseline:** v3 public renderer and civic Worker deployed August 22, 2026
+
+**Release reference:** Kineticday, Aura 16, Utopian Year 1 (Gregorian reference: August 22, 2026)
+
+### August 22 implementation record
+
+The publishing-recovery foundation is now operational:
+
+- WordPress site `251167125` remains the canonical editorial origin at `utopiansocietycorpus.wpcomstaging.com`; the custom domain serves the new public renderer.
+- The production Worker performs an idempotent, read-only WordPress synchronization every five minutes and retains a last-known-good D1 publication cache.
+- Twenty-six published WordPress posts, including featured-media and article-body data, were synchronized into the public manuscript routes.
+- The Editorial Studio reports bridge health and provides an authorized manual synchronization control.
+- Privacy-conscious first-party route analytics cover the public renderer. Private portal routes are rejected from public analytics ingestion.
+- WordPress statistics remain separately available for the WordPress-connected origin and are never added to the first-party application totals.
+- `robots.txt`, `sitemap.xml`, the public post archive, individual manuscript routes, read-aloud, the production Worker, and Transparency Ledger sequences 17–18 passed production acceptance checks.
+
+Two human acceptance checks remain before this track is considered fully closed: reconnect or refresh the Jetpack Android app against the WordPress site, then create and remove a private draft with a featured image. Jetpack statistics do not measure the Cloudflare/Sites renderer merely because WordPress remains the editorial origin; the first-party analytics stream is authoritative for those public application routes.
 
 ## 1. Outcome
 
@@ -49,7 +66,7 @@ The project already contains:
 - Public Learning, Healing, Immigration, and Circle experiences that establish the visual and interaction language.
 - A published-content snapshot imported from WordPress into the new local manuscript template.
 
-The redesign currently has an operational regression: the public domain no longer behaves as the original WordPress site, so the Jetpack Android and WordPress web workflows can no longer be relied upon for convenient publishing, media handling, or statistics. New posts also require a manual import/build cycle, and static ticker announcements remain coupled to source-code deployment. Restoring that control plane is an immediate prerequisite for sustainable operation.
+The earlier redesign regression has been corrected through the hybrid bridge recorded above. WordPress again supplies the editorial archive and established authoring tools, while the new public site renders synchronized content and records its own source-labeled aggregate analytics. Mobile Jetpack acceptance testing remains outstanding.
 
 The plan extends these foundations rather than replacing them.
 
@@ -173,6 +190,8 @@ Deliverables:
 Completion test: the local portal can identify a simulated citizen and authorized steward without contacting production.
 
 ### Parallel foundation track — Restore publishing and operational visibility
+
+**Implementation status (August 22, 2026):** Core bridge, scheduled synchronization, last-known-good cache, manuscript rendering, manual sync control, and first-party public analytics are complete in production. WordPress statistics access is restored. Android Jetpack draft/media acceptance and the final code-free ticker-authoring test remain open.
 
 **Purpose:** Recover the founder's mobile and web publishing tools, remove source-code deployment from ordinary editorial work, and restore trustworthy traffic visibility without undoing the new public design.
 
