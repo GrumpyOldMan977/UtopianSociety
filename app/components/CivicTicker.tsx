@@ -72,8 +72,8 @@ export function CivicTicker() {
       : "Population · Awaiting the public Citizen Register";
     return [
       {
-        label: "BETA · Public site frozen for review, updates planned Spiraday, Solvane 28, Utopian Year 1, once judging completes.",
-        href: "/blogs-essays/the-utopian-society-enters-openai-build-week",
+        label: "V3 · Public site updated · OpenAI Build Week judging complete · Awaiting results.",
+        href: "/transparency-ledger",
       },
       ...(payload?.announcements ?? []).map((announcement) => ({
         label: `Local · ${announcement.label}`,

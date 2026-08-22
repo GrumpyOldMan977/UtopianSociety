@@ -45,8 +45,9 @@ test("the WordPress bridge is local, review-gated, and incapable of remote write
   assert.doesNotMatch(productionConfig, /"DEPLOYMENT_MODE":\s*"local-v3"/);
 });
 
-test("the frozen public notice uses the Society calendar", async () => {
+test("the public notice reflects the completed judging period", async () => {
   const ticker = await source("app/components/CivicTicker.tsx");
-  assert.match(ticker, /Spiraday, Solvane 28, Utopian Year 1/);
-  assert.doesNotMatch(ticker, /August 6(?:th)?,? 2026/i);
+  assert.match(ticker, /V3 · Public site updated/);
+  assert.match(ticker, /OpenAI Build Week judging complete · Awaiting results\./);
+  assert.doesNotMatch(ticker, /Public site frozen for review/i);
 });
