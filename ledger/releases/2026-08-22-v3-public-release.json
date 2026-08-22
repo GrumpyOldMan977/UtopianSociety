@@ -1,0 +1,40 @@
+{
+  "releaseKey": "site-release:2026-08-22:v3-public-release",
+  "entries": [
+    {
+      "eventKey": "site-release:30be8a2:v3-public-release",
+      "eventType": "platform_release",
+      "category": "platform",
+      "title": "Utopian Society v3 civic platform published",
+      "summary": "Version 3 unifies the public corpus and civic portal as one production experience. The release introduces private citizen profiles and public civic profiles; Circle-facing civic interfaces; a source-bound, cumulative Ten-Q Learning evidence system with contracts, OCR review, recourse, and document-specific evaluation; expanded Immigration intake, assessment, oath, certificate, and citizen-record pathways; seven Foundational Circles and their civic topology; new Lore including Birth of the Moon and 9 Kingdoms Solitaire; population, Balance, FTB, and civic-status surfaces; read-aloud access and Utopian publication dates; robots.txt and an 84-route sitemap; and encrypted R2 storage for protected civic files.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "The Utopian Society v3",
+      "subjectRef": "release:v3",
+      "occurredAt": "2026-08-22T19:18:02.000Z",
+      "utopianDate": "Kineticday, Aura 16, Utopian Year 1",
+      "gregorianDate": "August 22, 2026",
+      "sourceLabel": "The Utopian Society v3 public release",
+      "sourceUrl": "https://utopiansocietycorpus.org/",
+      "metadata": {
+        "version": "3",
+        "commit": "30be8a2d1f52e44dd520e211b4ebb7461fe63812",
+        "canonicalDomain": "utopiansocietycorpus.org",
+        "publicSite": "Sites",
+        "civicServices": "Cloudflare Worker, D1, Workers AI, and R2",
+        "changes": [
+          "Unified public corpus and civic portal",
+          "Private citizen profiles and public civic profiles",
+          "Circle-facing civic interfaces",
+          "Cumulative source-bound Ten-Q Learning evaluation",
+          "Immigration assessment, oath, certificate, and citizen-record pathways",
+          "Seven Foundational Circles and revised civic topology",
+          "Birth of the Moon and 9 Kingdoms Solitaire in Lore",
+          "Population, Balance, FTB, and civic-status surfaces",
+          "Read-aloud access and Utopian publication dates",
+          "Robots.txt and an 84-route sitemap",
+          "Encrypted R2 storage for protected civic files"
+        ]
+      }
+    }
+  ]
+}
