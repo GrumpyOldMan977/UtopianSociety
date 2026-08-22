@@ -191,7 +191,7 @@ test("server-renders the complete West Ring archive with local post routes", asy
   const response = await render("/blogs-essays");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /The local archive/);
+  assert.match(html, /The synchronized archive/);
   assert.match(html, /27[\s\S]{0,30}entries/);
   assert.match(html, /href="\/blogs-essays\/the-fornax"/);
   assert.match(html, /href="\/blogs-essays\/an-introspection-into-my-identity"/);

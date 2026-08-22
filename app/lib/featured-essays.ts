@@ -76,8 +76,8 @@ function card(post: ImportedPost, meta: string): FeaturedEssay {
   };
 }
 
-function fallback() {
-  const essays = getEssayPosts();
+async function fallback() {
+  const essays = await getEssayPosts();
   return fallbackSlugs
     .map((slug) => essays.find((post) => post.slug === slug))
     .filter((post): post is ImportedPost => Boolean(post))
@@ -86,9 +86,9 @@ function fallback() {
 
 export async function getFeaturedEssays(): Promise<FeaturedEssay[]> {
   const token = process.env.WPCOM_ACCESS_TOKEN;
-  if (!token) return fallback();
+  if (!token) return await fallback();
   try {
-    const essays = new Map(getEssayPosts().map((post) => [post.id, post]));
+    const essays = new Map((await getEssayPosts()).map((post) => [post.id, post]));
     const featured = (await fetchViewRanking(token))
       .filter(({ id }) => essays.has(id))
       .slice(0, 3)
@@ -96,8 +96,8 @@ export async function getFeaturedEssays(): Promise<FeaturedEssay[]> {
         essays.get(id)!,
         `${index === 0 ? "Most read" : `Reader favorite #${index + 1}`} · ${views.toLocaleString("en-US")} views`,
       ));
-    return featured.length === 3 ? featured : fallback();
+    return featured.length === 3 ? featured : await fallback();
   } catch {
-    return fallback();
+    return await fallback();
   }
 }

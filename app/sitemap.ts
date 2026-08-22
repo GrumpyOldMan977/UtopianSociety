@@ -1,13 +1,14 @@
 import type { MetadataRoute } from "next";
 import { civicBodies } from "./lib/circle-navigation";
 import { corpusDocuments } from "./lib/corpus-documents";
-import { importedPosts } from "./lib/imported-posts";
+import { getAllImportedPosts } from "./lib/imported-posts";
 
 const SITE_URL = "https://utopiansocietycorpus.org";
 
 const absoluteUrl = (path: string) => new URL(path, SITE_URL).toString();
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const importedPosts = await getAllImportedPosts();
   const entries: MetadataRoute.Sitemap = [
     { url: absoluteUrl("/"), changeFrequency: "daily", priority: 1 },
     { url: absoluteUrl("/utopian-society"), changeFrequency: "monthly", priority: 0.9 },

@@ -2,7 +2,7 @@
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "utopian-civic-ledger",
   "main": "src/index.js",
-  "compatibility_date": "2026-07-19",
+  "compatibility_date": "2026-08-22",
   "compatibility_flags": ["nodejs_compat"],
   "d1_databases": [
     {
@@ -21,6 +21,14 @@
       "bucket_name": "utopian-civic-files"
     }
   ],
+  "vars": {
+    "DEPLOYMENT_MODE": "production",
+    "PUBLIC_SITE_FROZEN": "false",
+    "WORDPRESS_ORIGIN": "https://utopiansocietycorpus.wpcomstaging.com",
+    "WORDPRESS_SITE_ID": "251167125",
+    "PUBLIC_SITE_ORIGIN": "https://utopiansocietycorpus.org",
+    "EDITORIAL_AUTHORIZED_LOGINS": "TheFounder"
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 0.1

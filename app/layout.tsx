@@ -6,6 +6,7 @@ import "./sexual-care.css";
 import "./transparency-ledger.css";
 import "./citizen-portal.css";
 import "./editorial-studio.css";
+import { SiteAnalytics } from "./components/SiteAnalytics";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://utopiansocietycorpus.org"),
@@ -25,6 +26,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <head>
       <script dangerouslySetInnerHTML={{ __html: `(function(){try{var v=localStorage.getItem('utopia.textSize');document.documentElement.dataset.utopiaTextSize=(v==='standard'||v==='largest')?v:'large'}catch(e){document.documentElement.dataset.utopiaTextSize='large'}})();` }} />
     </head>
-    <body>{children}</body>
+    <body>{children}<SiteAnalytics /></body>
   </html>;
 }

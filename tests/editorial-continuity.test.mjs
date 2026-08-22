@@ -29,7 +29,7 @@ test("blogs and essays present Utopian dates as the visible standard", async () 
   assert.doesNotMatch(archivePage, /post\.dateLabel/);
 });
 
-test("the WordPress bridge is local, review-gated, and incapable of remote writes", async () => {
+test("the WordPress bridge is read-only, review-gated, and incapable of WordPress writes", async () => {
   const worker = await source("cloudflare/civic-ledger/src/index.js");
   const studio = await source("app/components/EditorialStudio.tsx");
   const localConfig = await source("cloudflare/civic-ledger/wrangler.local.jsonc");
@@ -39,7 +39,9 @@ test("the WordPress bridge is local, review-gated, and incapable of remote write
   assert.match(worker, /remoteWritesEnabled:\s*false/);
   assert.match(worker, /reviewRequired:\s*true/);
   assert.match(worker, /requireLocalV3\(request, env\)/);
-  assert.match(studio, /No remote write path exists in this build/);
+  assert.match(studio, /WordPress writes remain disabled here/);
+  assert.match(studio, /No WordPress content was changed/);
+  assert.match(studio, /synchronizeWordpressPublications/);
   assert.match(studio, /Download reviewed handoff manifest/);
   assert.match(localConfig, /"DEPLOYMENT_MODE":\s*"local-v3"/);
   assert.doesNotMatch(productionConfig, /"DEPLOYMENT_MODE":\s*"local-v3"/);

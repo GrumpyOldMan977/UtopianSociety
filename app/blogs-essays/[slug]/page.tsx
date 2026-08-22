@@ -38,7 +38,7 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const post = getImportedPost(slug);
+  const post = await getImportedPost(slug);
   if (!post) return {};
   const image = postDisplayImage(post);
   return {
@@ -50,11 +50,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function ImportedPostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const post = getImportedPost(slug);
+  const post = await getImportedPost(slug);
   if (!post) notFound();
   const image = postDisplayImage(post);
   const { html, contents } = prepareContent(post.content);
-  const { newer, older } = adjacentPosts(post.slug);
+  const { newer, older } = await adjacentPosts(post.slug);
   const type = post.categories.includes("Essays") ? "Essay" : "Working record";
   const isLocalAnnouncement = post.id >= 1000000;
 
@@ -89,7 +89,7 @@ export default async function ImportedPostPage({ params }: { params: Promise<{ s
         <div className="post-body" id="post-authored-text" dangerouslySetInnerHTML={{ __html: html }} />
         <footer className="post-provenance">
           <span>Corpus provenance</span>
-          <p>{isLocalAnnouncement ? "Published directly within the Utopian Society Corpus as part of the living working record." : "Imported faithfully from the published WordPress edition. The local presentation has changed; the authored text and original publication date remain intact."}</p>
+          <p>{isLocalAnnouncement ? "Published directly within the Utopian Society as part of the living working record." : "Synchronized read-only from the published WordPress editorial edition. The presentation has changed; the authored text and original publication date remain intact."}</p>
           <a href={post.sourceUrl} target="_blank" rel="noreferrer">{isLocalAnnouncement ? "View the public Build Week submission ↗" : "View the source edition ↗"}</a>
         </footer>
       </article>

@@ -24,8 +24,11 @@
   },
   "vars": {
     "DEPLOYMENT_MODE": "local-v3",
-    "PUBLIC_SITE_FROZEN": "true",
-    "EDITORIAL_AUTHORIZED_LOGINS": "TheFounder"
+    "PUBLIC_SITE_FROZEN": "false",
+    "EDITORIAL_AUTHORIZED_LOGINS": "TheFounder",
+    "WORDPRESS_ORIGIN": "https://utopiansocietycorpus.wpcomstaging.com",
+    "WORDPRESS_SITE_ID": "251167125",
+    "PUBLIC_SITE_ORIGIN": "http://localhost:9877"
   },
   "observability": {
     "enabled": true,

@@ -4556,6 +4556,7 @@ function publicPublication(row) {
     canonicalUrl: row.canonical_url,
     excerpt: row.excerpt || "",
     contentMarkdown: row.content_markdown || "",
+    contentHtml: row.content_html || "",
     featuredImage: row.featured_image,
     authorName: row.author_name || "Adreto Nagdo Senoviros",
     publicationDate: row.publication_date,
@@ -4563,9 +4564,269 @@ function publicPublication(row) {
     gregorianDate: row.gregorian_date,
     sourceModifiedAt: row.source_modified_at,
     synchronizedAt: row.synchronized_at,
+    sourceUrl: row.source_url,
+    readingMinutes: Number(row.reading_minutes || 1),
+    wordCount: Number(row.word_count || 0),
     metadata: parseStoredJson(row.metadata_json, {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+const DEFAULT_WORDPRESS_ORIGIN = "https://utopiansocietycorpus.wpcomstaging.com";
+const DEFAULT_PUBLIC_SITE_ORIGIN = "https://utopiansocietycorpus.org";
+
+function decodeWordpressText(value) {
+  return String(value || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&#(\d+);/g, (_match, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_match, code) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;|&#039;/gi, "'")
+    .replace(/&hellip;/gi, "…")
+    .replace(/&mdash;/gi, "—")
+    .replace(/&ndash;/gi, "–")
+    .replace(/&rsquo;|&lsquo;/gi, "’")
+    .replace(/&rdquo;|&ldquo;/gi, "”")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function safeWordpressHtml(value) {
+  return String(value || "")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .slice(0, 500_000);
+}
+
+function wordpressUtcDate(value) {
+  const source = String(value || "").trim();
+  if (!source) return null;
+  const normalized = /(?:Z|[+-]\d\d:\d\d)$/i.test(source) ? source : `${source}Z`;
+  return Number.isNaN(Date.parse(normalized)) ? null : new Date(normalized).toISOString();
+}
+
+function wordpressTerms(post, taxonomy) {
+  const groups = post?._embedded?.["wp:term"];
+  if (!Array.isArray(groups)) return [];
+  return groups.flat().filter((term) => term?.taxonomy === taxonomy).map((term) => decodeWordpressText(term.name)).filter(Boolean);
+}
+
+function normalizeWordpressPost(post, env, synchronizedAt) {
+  const wordpressId = Number(post?.id);
+  if (!Number.isInteger(wordpressId) || wordpressId < 1) throw new Error("WordPress returned a post without a valid numeric ID.");
+  const slug = publicationSlug(post.slug);
+  const title = decodeWordpressText(post?.title?.rendered).slice(0, 240);
+  if (!title) throw new Error(`WordPress post ${wordpressId} has no usable title.`);
+  const contentHtml = safeWordpressHtml(post?.content?.rendered);
+  const plainContent = decodeWordpressText(contentHtml);
+  const wordCount = plainContent ? plainContent.split(/\s+/).length : 0;
+  const publicationDate = wordpressUtcDate(post.date_gmt || post.date);
+  const sourceModifiedAt = wordpressUtcDate(post.modified_gmt || post.modified) || publicationDate;
+  const publicOrigin = String(env.PUBLIC_SITE_ORIGIN || DEFAULT_PUBLIC_SITE_ORIGIN).replace(/\/$/, "");
+  const featured = post?._embedded?.["wp:featuredmedia"]?.[0];
+  const author = post?._embedded?.author?.[0];
+  const excerpt = decodeWordpressText(post?.excerpt?.rendered || plainContent).slice(0, 600);
+  return {
+    publicationId: `WP-${wordpressId}`,
+    wordpressId,
+    slug,
+    title,
+    canonicalUrl: `${publicOrigin}/blogs-essays/${slug}`,
+    sourceUrl: cleanText(post.link, 1_000, false) || `${String(env.WORDPRESS_ORIGIN || DEFAULT_WORDPRESS_ORIGIN).replace(/\/$/, "")}/${slug}/`,
+    sourceModifiedAt,
+    synchronizedAt,
+    excerpt,
+    contentHtml,
+    featuredImage: cleanText(featured?.source_url, 1_000, false) || null,
+    featuredAlt: cleanText(featured?.alt_text, 500, false),
+    authorName: decodeWordpressText(author?.name) || "Adreto Nagdo Senoviros",
+    publicationDate,
+    utopianDate: publicationDate ? formatUtopianDate(new Date(publicationDate)) : null,
+    gregorianDate: publicationDate ? formatGregorianDate(new Date(publicationDate)) : null,
+    readingMinutes: Math.max(1, Math.ceil(wordCount / 225)),
+    wordCount,
+    categories: wordpressTerms(post, "category"),
+    tags: wordpressTerms(post, "post_tag"),
+  };
+}
+
+async function fetchWordpressPage(env, page) {
+  const origin = String(env.WORDPRESS_ORIGIN || DEFAULT_WORDPRESS_ORIGIN).replace(/\/$/, "");
+  const endpoint = new URL(`${origin}/wp-json/wp/v2/posts`);
+  endpoint.searchParams.set("status", "publish");
+  endpoint.searchParams.set("per_page", "100");
+  endpoint.searchParams.set("page", String(page));
+  endpoint.searchParams.set("orderby", "modified");
+  endpoint.searchParams.set("order", "desc");
+  endpoint.searchParams.set("_embed", "author,wp:featuredmedia,wp:term");
+  const response = await fetch(endpoint, {
+    headers: { Accept: "application/json", "User-Agent": "Utopian-Society-Publication-Bridge/1.0" },
+    redirect: "follow",
+  });
+  const contentType = response.headers.get("Content-Type") || "";
+  if (!response.ok || !contentType.toLowerCase().includes("json")) {
+    throw new Error(`WordPress editorial origin returned HTTP ${response.status} (${contentType || "unknown content type"}).`);
+  }
+  const posts = await response.json();
+  if (!Array.isArray(posts)) throw new Error("WordPress editorial origin returned an invalid post collection.");
+  const totalPages = Math.max(1, Math.min(20, Number(response.headers.get("X-WP-TotalPages")) || 1));
+  return { posts, totalPages };
+}
+
+async function markWordpressSync(env, values) {
+  await env.DB.prepare(`
+    UPDATE editorial_sync_state
+    SET cursor_value = COALESCE(?2, cursor_value), last_success_at = COALESCE(?3, last_success_at),
+        last_attempt_at = ?1, status = ?4, message = ?5
+    WHERE source_key = 'wordpress-live-bridge'
+  `).bind(values.attemptedAt, values.cursor || null, values.succeededAt || null, values.status, values.message).run();
+}
+
+async function syncWordpressArchive(env) {
+  const attemptedAt = new Date().toISOString();
+  await markWordpressSync(env, {
+    attemptedAt,
+    status: "running",
+    message: "Reading published material from the WordPress editorial origin.",
+  });
+  try {
+    const first = await fetchWordpressPage(env, 1);
+    const sourcePosts = [...first.posts];
+    for (let page = 2; page <= first.totalPages; page += 1) {
+      sourcePosts.push(...(await fetchWordpressPage(env, page)).posts);
+    }
+    if (sourcePosts.length < 1) throw new Error("WordPress returned no published posts; the last-known-good archive was retained.");
+    const synchronizedAt = new Date().toISOString();
+    const posts = sourcePosts.map((post) => normalizeWordpressPost(post, env, synchronizedAt));
+    const statements = [env.DB.prepare("DELETE FROM publications WHERE wordpress_id IS NOT NULL")];
+    for (const post of posts) {
+      statements.push(env.DB.prepare(`
+        INSERT INTO publications (
+          publication_id, wordpress_id, slug, publication_type, title, status,
+          canonical_url, source_modified_at, synchronized_at, metadata_json,
+          excerpt, content_markdown, featured_image, author_name, publication_date,
+          utopian_date, gregorian_date, created_at, updated_at, content_html,
+          source_url, reading_minutes, word_count
+        ) VALUES (
+          ?1, ?2, ?3, 'post', ?4, 'published', ?5, ?6, ?7, ?8,
+          ?9, '', ?10, ?11, ?12, ?13, ?14, ?7, ?7, ?15, ?16, ?17, ?18
+        )
+      `).bind(
+        post.publicationId, post.wordpressId, post.slug, post.title, post.canonicalUrl,
+        post.sourceModifiedAt, post.synchronizedAt, JSON.stringify({
+          categories: post.categories,
+          tags: post.tags,
+          featuredAlt: post.featuredAlt,
+          source: "wordpress-live-bridge",
+          editorialOrigin: env.WORDPRESS_ORIGIN || DEFAULT_WORDPRESS_ORIGIN,
+        }),
+        post.excerpt, post.featuredImage, post.authorName, post.publicationDate,
+        post.utopianDate, post.gregorianDate, post.contentHtml, post.sourceUrl,
+        post.readingMinutes, post.wordCount,
+      ));
+    }
+    const newest = posts.map((post) => post.sourceModifiedAt || "").sort().at(-1) || synchronizedAt;
+    statements.push(env.DB.prepare(`
+      UPDATE editorial_sync_state
+      SET cursor_value = ?1, last_success_at = ?2, last_attempt_at = ?2,
+          status = 'succeeded', message = ?3
+      WHERE source_key = 'wordpress-live-bridge'
+    `).bind(newest, synchronizedAt, `${posts.length} published WordPress posts synchronized read-only.`));
+    await env.DB.batch(statements);
+    console.log(JSON.stringify({ level: "info", message: "wordpress-publications-synchronized", count: posts.length, newest }));
+    return { synchronized: posts.length, synchronizedAt, newest, remoteWrites: false };
+  } catch (error) {
+    await markWordpressSync(env, {
+      attemptedAt,
+      status: "failed",
+      message: boundedGeneratedText(String(error?.message || error), 500, "WordPress synchronization failed."),
+    });
+    throw error;
+  }
+}
+
+async function listPublications(env, url) {
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 50));
+  const type = ["post", "page", "announcement"].includes(url.searchParams.get("type")) ? url.searchParams.get("type") : "post";
+  const result = await env.DB.prepare(`
+    SELECT * FROM publications
+    WHERE status = 'published' AND publication_type = ?1
+    ORDER BY COALESCE(publication_date, created_at) DESC
+    LIMIT ?2
+  `).bind(type, limit).all();
+  return { publications: (result.results || []).map(publicPublication), lastKnownGood: true };
+}
+
+async function publicPublicationBySlug(env, slug) {
+  const row = await env.DB.prepare(`
+    SELECT * FROM publications WHERE slug = ?1 AND status = 'published' LIMIT 1
+  `).bind(publicationSlug(slug)).first();
+  if (!row) throw new ClientError("Publication not found.", 404, "publication_not_found");
+  return { publication: publicPublication(row), lastKnownGood: true };
+}
+
+function publicAnalyticsPath(value) {
+  const path = String(value || "").trim().split(/[?#]/)[0];
+  if (!/^\/[a-z0-9_~!$&'()*+,;=:@%\/-]*$/i.test(path) || path.length > 500) {
+    throw new ClientError("The analytics path is invalid.");
+  }
+  if (/^\/(?:portal|login|editorial|api)(?:\/|$)/.test(path)) {
+    throw new ClientError("Private application paths are not measured.", 403, "private_path");
+  }
+  return path || "/";
+}
+
+function analyticsSource(input) {
+  const ownHosts = new Set(["utopiansocietycorpus.org", "www.utopiansocietycorpus.org"]);
+  const host = String(input.referrerHost || "").toLowerCase().replace(/^www\./, "").slice(0, 200);
+  const utmSource = cleanText(input.utmSource, 100, false).toLowerCase();
+  const medium = cleanText(input.utmMedium, 100, false).toLowerCase();
+  const campaign = cleanText(input.utmCampaign, 160, false);
+  if (utmSource) return { group: "campaign", detail: utmSource, medium, campaign };
+  if (!host) return { group: "direct", detail: "", medium: "", campaign: "" };
+  if (ownHosts.has(host) || host.endsWith(".utopiansocietycorpus.org")) return { group: "internal", detail: host, medium: "", campaign: "" };
+  if (/(^|\.)(google|bing|duckduckgo|yahoo|ecosia|brave)\./.test(host)) return { group: "search", detail: host, medium: "organic", campaign: "" };
+  if (/(^|\.)(facebook|instagram|linkedin|reddit|x|twitter|threads|bsky)\./.test(host)) return { group: "social", detail: host, medium: "referral", campaign: "" };
+  return { group: "referral", detail: host, medium: "referral", campaign: "" };
+}
+
+async function recordPublicAnalytics(request, env, input) {
+  requirePublicOrigin(request);
+  const path = publicAnalyticsPath(input.path);
+  const source = analyticsSource(input);
+  const day = new Date().toISOString().slice(0, 10);
+  await env.DB.prepare(`
+    INSERT INTO public_analytics_daily (
+      day_utc, path, source_group, source_detail, medium, campaign, views
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1)
+    ON CONFLICT(day_utc, path, source_group, source_detail, medium, campaign)
+    DO UPDATE SET views = views + 1
+  `).bind(day, path, source.group, source.detail, source.medium, source.campaign).run();
+  return { recorded: true, aggregateOnly: true };
+}
+
+async function editorialAnalytics(request, env, url) {
+  await requireEditorialAuthority(request, env);
+  const days = Math.min(365, Math.max(1, Number(url.searchParams.get("days")) || 30));
+  const since = new Date(Date.now() - (days - 1) * DAY_IN_MS).toISOString().slice(0, 10);
+  const [totals, sources, paths, daily] = await Promise.all([
+    env.DB.prepare(`SELECT COALESCE(SUM(views), 0) AS views FROM public_analytics_daily WHERE day_utc >= ?1`).bind(since).first(),
+    env.DB.prepare(`SELECT source_group, source_detail, SUM(views) AS views FROM public_analytics_daily WHERE day_utc >= ?1 GROUP BY source_group, source_detail ORDER BY views DESC LIMIT 30`).bind(since).all(),
+    env.DB.prepare(`SELECT path, SUM(views) AS views FROM public_analytics_daily WHERE day_utc >= ?1 GROUP BY path ORDER BY views DESC LIMIT 30`).bind(since).all(),
+    env.DB.prepare(`SELECT day_utc, SUM(views) AS views FROM public_analytics_daily WHERE day_utc >= ?1 GROUP BY day_utc ORDER BY day_utc ASC`).bind(since).all(),
+  ]);
+  return {
+    days,
+    since,
+    totalViews: Number(totals?.views || 0),
+    sources: sources.results || [],
+    paths: paths.results || [],
+    daily: daily.results || [],
+    privacy: "Aggregate page views only; no IP, civic identity, user agent, or full referrer URL is retained.",
   };
 }
 
@@ -4582,12 +4843,12 @@ async function editorialStatus(request, env) {
     env.DB.prepare(`SELECT * FROM ticker_announcements ORDER BY priority DESC, updated_at DESC LIMIT 12`).all(),
   ]);
   return {
-    localSimulation: true,
+    localSimulation: env.DEPLOYMENT_MODE === "local-v3",
     productionFrozen: env.PUBLIC_SITE_FROZEN === "true",
     wordpressBridge: {
-      mode: "reviewed handoff",
+      mode: "read-only scheduled synchronization",
       remoteWritesEnabled: false,
-      purpose: "Preserve WordPress and Jetpack as the public editorial surface while preparing local v3 drafts safely.",
+      purpose: "Keep WordPress and Jetpack as the editorial origin while the Cloudflare/Sites facade renders a last-known-good public copy.",
     },
     publicationCounts: publicationCounts.results || [],
     announcementCounts: announcementCounts.results || [],
@@ -4848,6 +5109,17 @@ async function route(request, env) {
   if (request.method === "GET" && path === "/v1/ledger") return listLedger(request, env, url);
   if (request.method === "GET" && path === "/v1/population") return population(request, env);
   if (request.method === "GET" && path === "/v1/citizens") return listCitizens(request, env, url);
+  if (request.method === "GET" && path === "/v3/publications") {
+    return json(request, await listPublications(env, url), {
+      headers: { "Cache-Control": "public, max-age=120, stale-while-revalidate=600" },
+    });
+  }
+  const publicPublicationRoute = path.match(/^\/v3\/publications\/([a-z0-9]+(?:-[a-z0-9]+)*)$/);
+  if (request.method === "GET" && publicPublicationRoute) {
+    return json(request, await publicPublicationBySlug(env, publicPublicationRoute[1]), {
+      headers: { "Cache-Control": "public, max-age=120, stale-while-revalidate=600" },
+    });
+  }
   const publicProfileAvatarRoute = path.match(/^\/v3\/public\/citizens\/([a-z0-9-]+)\/avatar$/);
   if (request.method === "GET" && publicProfileAvatarRoute) {
     return publicProfileAvatar(request, env, publicProfileAvatarRoute[1]);
@@ -4890,6 +5162,9 @@ async function route(request, env) {
   if (request.method === "GET" && path === "/v3/editorial/announcements") {
     return json(request, await listTickerAnnouncements(request, env, url), { headers: { "Cache-Control": "no-store" } });
   }
+  if (request.method === "GET" && path === "/v3/editorial/analytics") {
+    return json(request, await editorialAnalytics(request, env, url), { headers: { "Cache-Control": "no-store" } });
+  }
   if (request.method === "GET" && path === "/v2/immigration/assessment/bank") {
     return json(request, {
       version: ASSESSMENT_VERSION_V2,
@@ -4902,6 +5177,14 @@ async function route(request, env) {
   if (request.method === "POST" && path === "/v2/immigration/assessment/start") {
     const assessment = await startAssessment(request, env);
     return json(request, assessment, { status: 201, headers: { "Cache-Control": "no-store" } });
+  }
+
+  if (request.method === "POST" && path === "/v3/analytics/event") {
+    const body = await readJson(request, 5_000);
+    return json(request, await recordPublicAnalytics(request, env, body), {
+      status: 202,
+      headers: { "Cache-Control": "no-store" },
+    });
   }
 
   if (request.method === "POST" && path === "/v2/immigration/assessment/score") {
@@ -5061,6 +5344,11 @@ async function route(request, env) {
     return json(request, written, { headers: { "Cache-Control": "no-store" } });
   }
 
+  if (request.method === "POST" && path === "/v3/editorial/sync-wordpress") {
+    await requireEditorialAuthority(request, env);
+    return json(request, await syncWordpressArchive(env), { headers: { "Cache-Control": "no-store" } });
+  }
+
   const contributionAction = path.match(/^\/v3\/contribution\/assignments\/([A-Za-z0-9-]+)\/(time|submit|affirm)$/);
   if (request.method === "POST" && contributionAction) {
     const body = await readJson(request);
@@ -5116,7 +5404,17 @@ const civicLedgerWorker = {
     }
   },
   async scheduled(_controller, env, ctx) {
-    ctx.waitUntil(syncPublicReleaseManifests(env));
+    ctx.waitUntil((async () => {
+      const results = await Promise.allSettled([
+        syncPublicReleaseManifests(env),
+        syncWordpressArchive(env),
+      ]);
+      for (const result of results) {
+        if (result.status === "rejected") {
+          console.error(JSON.stringify({ level: "error", message: "scheduled-civic-task-failed", error: String(result.reason) }));
+        }
+      }
+    })());
   },
 };
 

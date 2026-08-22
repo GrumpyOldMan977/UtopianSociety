@@ -521,6 +521,7 @@ export type EditorialPublication = {
   canonicalUrl: string | null;
   excerpt: string;
   contentMarkdown: string;
+  contentHtml: string;
   featuredImage: string | null;
   authorName: string;
   publicationDate: string | null;
@@ -528,13 +529,16 @@ export type EditorialPublication = {
   gregorianDate: string | null;
   sourceModifiedAt: string | null;
   synchronizedAt: string | null;
+  sourceUrl: string | null;
+  readingMinutes: number;
+  wordCount: number;
   metadata: Record<string, unknown>;
   createdAt: string | null;
   updatedAt: string | null;
 };
 
 export type EditorialStatus = {
-  localSimulation: true;
+  localSimulation: boolean;
   productionFrozen: boolean;
   wordpressBridge: {
     mode: string;
@@ -554,6 +558,18 @@ export type EditorialStatus = {
   recentPublications: EditorialPublication[];
   recentAnnouncements: TickerAnnouncement[];
 };
+
+export type EditorialAnalytics = {
+  days: number;
+  since: string;
+  totalViews: number;
+  sources: Array<{ source_group: string; source_detail: string; views: number }>;
+  paths: Array<{ path: string; views: number }>;
+  daily: Array<{ day_utc: string; views: number }>;
+  privacy: string;
+};
+
+export type SynchronizedPublication = EditorialPublication;
 
 export type WordpressHandoffManifest = {
   manifestVersion: "wordpress-reviewed-handoff-v1";
@@ -932,6 +948,18 @@ export function getLocalEditorialAccess() {
 
 export function getLocalWordpressHandoff() {
   return civicRequest<WordpressHandoffManifest>("/v3/editorial/wordpress-handoff", undefined, true);
+}
+
+export function synchronizeWordpressPublications() {
+  return civicRequest<{ synchronized: number; synchronizedAt: string; newest: string; remoteWrites: false }>(
+    "/v3/editorial/sync-wordpress",
+    { method: "POST", body: "{}" },
+    true,
+  );
+}
+
+export function getEditorialAnalytics(days = 30) {
+  return civicRequest<EditorialAnalytics>(`/v3/editorial/analytics?days=${days}`, undefined, true);
 }
 
 export function createLocalTickerAnnouncement(input: {

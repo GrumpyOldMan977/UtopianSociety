@@ -5,8 +5,11 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import {
   createLocalEditorialDraft,
   createLocalTickerAnnouncement,
+  getEditorialAnalytics,
   getLocalEditorialStatus,
   getLocalWordpressHandoff,
+  synchronizeWordpressPublications,
+  type EditorialAnalytics,
   type EditorialStatus,
 } from "../lib/civic-ledger";
 
@@ -22,6 +25,7 @@ function isoDate(value: string) {
 
 export function EditorialStudio() {
   const [status, setStatus] = useState<EditorialStatus | null>(null);
+  const [analytics, setAnalytics] = useState<EditorialAnalytics | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
@@ -30,7 +34,9 @@ export function EditorialStudio() {
 
   const refresh = useCallback(async () => {
     try {
-      setStatus(await getLocalEditorialStatus());
+      const nextStatus = await getLocalEditorialStatus();
+      setStatus(nextStatus);
+      try { setAnalytics(await getEditorialAnalytics(30)); } catch { setAnalytics(null); }
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The local editorial record is unavailable.");
@@ -113,6 +119,21 @@ export function EditorialStudio() {
     }
   }
 
+  async function synchronizeArchive() {
+    setBusy("sync");
+    setError("");
+    setNotice("");
+    try {
+      const result = await synchronizeWordpressPublications();
+      setNotice(`${result.synchronized} published WordPress posts synchronized read-only. No WordPress content was changed.`);
+      await refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The WordPress archive could not be synchronized.");
+    } finally {
+      setBusy("");
+    }
+  }
+
   if (!status) return <section className="editorial-access-gate" aria-live="polite">
     <span>Authorized representatives</span>
     <h1>Editorial Studio is private.</h1>
@@ -123,14 +144,14 @@ export function EditorialStudio() {
   return <>
     <section className="editorial-studio-hero" aria-labelledby="editorial-studio-title">
       <div>
-        <span>Local v3 · Editorial continuity</span>
+        <span>Editorial continuity · WordPress origin</span>
         <h1 id="editorial-studio-title">The public voice remains connected to its archive.</h1>
-        <p>Draft the working record and the civic wire locally while the judged public beta remains frozen. WordPress and Jetpack remain the intended public editorial surface; this desk prepares reviewed handoffs without silently changing production.</p>
+        <p>WordPress remains the publishing desk for Android, web, and Jetpack. The public facade reads only material that WordPress has already published and retains its last-known-good copy whenever the origin is unavailable.</p>
       </div>
       <aside aria-label="Editorial safety status">
-        <strong>Local only</strong>
-        <span>Production frozen</span>
-        <small>Remote writes disabled</small>
+        <strong>{status.wordpressBridge.mode}</strong>
+        <span>{status.productionFrozen ? "Public release frozen" : "Public release active"}</span>
+        <small>WordPress writes remain disabled here</small>
       </aside>
     </section>
 
@@ -140,7 +161,7 @@ export function EditorialStudio() {
       <article><span>WordPress archive</span><strong>{importedCount}</strong><small>publications inventoried</small></article>
       <article><span>Local working record</span><strong>{draftCount}</strong><small>drafts awaiting review</small></article>
       <article><span>Local civic wire</span><strong>{activeTickerCount}</strong><small>active local notices</small></article>
-      <article><span>Bridge policy</span><strong>Review</strong><small>before every public handoff</small></article>
+      <article><span>30-day public reading</span><strong>{analytics?.totalViews.toLocaleString("en-US") ?? "—"}</strong><small>aggregate first-party page views</small></article>
     </section>
 
     <section className="editorial-workbench">
@@ -176,18 +197,24 @@ export function EditorialStudio() {
     </section>
 
     <section className="editorial-bridge" aria-labelledby="editorial-bridge-title">
-      <div><span>03 · WordPress / Jetpack bridge</span><h2 id="editorial-bridge-title">Restore the tools without splitting the public record.</h2></div>
+      <div><span>03 · WordPress / Jetpack bridge</span><h2 id="editorial-bridge-title">One editorial origin, one public record.</h2></div>
       <ol>
         <li><strong>Inventory</strong><p>The 27 current public posts are represented locally with source URL, original timestamp, Utopian date, imagery, categories, and tags.</p></li>
         <li><strong>Compose</strong><p>New writing begins here or in WordPress, but every item receives one canonical slug and a civic author identity.</p></li>
-        <li><strong>Review</strong><p>A handoff manifest will show exactly what would change before any WordPress API write is enabled.</p></li>
-        <li><strong>Publish</strong><p>After the judging freeze, approved posts return to WordPress so Jetpack statistics and Android publishing can function again.</p></li>
+        <li><strong>Synchronize</strong><p>The Worker reads only published posts, preserves the authored HTML and imagery, and records one canonical public route.</p></li>
+        <li><strong>Preserve</strong><p>If WordPress cannot be reached, the prior public copy remains intact rather than disappearing.</p></li>
       </ol>
       <aside>
-        <strong>No remote write path exists in this build.</strong>
-        <p>That is deliberate. The bridge can be activated only after the freeze and an explicit review of credentials, canonical URLs, and rollback behavior.</p>
+        <strong>This bridge never writes to WordPress.</strong>
+        <p>Publish and edit through WordPress or Jetpack; this desk can verify the read-only synchronization and inspect aggregate traffic sources.</p>
+        <button type="button" onClick={synchronizeArchive} disabled={busy === "sync"}>{busy === "sync" ? "Synchronizing…" : "Synchronize published WordPress posts"}</button>
         <button type="button" onClick={downloadHandoff} disabled={busy === "handoff"}>{busy === "handoff" ? "Preparing…" : "Download reviewed handoff manifest"}</button>
       </aside>
+    </section>
+
+    <section className="editorial-publications" aria-label="Aggregate public analytics">
+      <header><span>First-party reading · 30 days</span><h2>Where the public record is being found.</h2><p>{analytics?.privacy || "No private civic activity is measured."}</p></header>
+      <div>{analytics?.sources.length ? analytics.sources.slice(0, 8).map((source) => <article key={`${source.source_group}:${source.source_detail}`}><span>{source.source_group}</span><strong>{source.source_detail || "No external referrer"}</strong><small>{Number(source.views).toLocaleString("en-US")} page views</small></article>) : <article><span>Awaiting public readings</span><strong>No source totals yet.</strong><small>Traffic begins accumulating after deployment.</small></article>}</div>
     </section>
 
     <section className="editorial-publications" aria-label="Recent publication inventory">

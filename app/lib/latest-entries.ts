@@ -1,4 +1,4 @@
-import { importedPosts, postDisplayImage, postPath } from "./imported-posts";
+import { getAllImportedPosts, postDisplayImage, postPath } from "./imported-posts";
 
 export type LatestEntry = {
   title: string;
@@ -9,7 +9,7 @@ export type LatestEntry = {
 };
 
 export async function getLatestEntries(): Promise<LatestEntry[]> {
-  return importedPosts.slice(0, 5).map((post) => ({
+  return (await getAllImportedPosts()).slice(0, 5).map((post) => ({
     title: post.title,
     date: post.utopianDateLabel,
     href: postPath(post.slug),
