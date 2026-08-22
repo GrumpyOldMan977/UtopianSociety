@@ -1,0 +1,38 @@
+{
+  "releaseKey": "site-release:2026-08-22:private-civic-portal-activation",
+  "entries": [
+    {
+      "eventKey": "site-release:e0db0aa:private-civic-portal-activation",
+      "eventType": "platform_release",
+      "category": "platform",
+      "title": "Private civic portal activated in production",
+      "summary": "The production civic portal now supports authenticated private citizen access. The Founder's civic profile, encrypted Learning evidence, source contracts, evaluations, recommendations, profile media, and related protected records were migrated from the isolated local v3 environment into production. Editorial Studio and analytics authority are enforced server-side and remain available only through the Founder's authorized civic profile. A pre-migration database backup was retained, protected files were transferred to encrypted civic storage, referential integrity was verified, and the complete 65-test release suite passed before publication.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "Private Civic Portal",
+      "subjectRef": "release:v3-private-portal",
+      "occurredAt": "2026-08-22T23:20:00.000Z",
+      "utopianDate": "Kineticday, Aura 16, Utopian Year 1",
+      "gregorianDate": "August 22, 2026",
+      "sourceLabel": "The Utopian Society private civic portal",
+      "sourceUrl": "https://utopiansocietycorpus.org/login",
+      "metadata": {
+        "version": "3",
+        "commit": "e0db0aaada37f00d2d4bf7bf9048c182e979f1b3",
+        "accessBoundary": "Authenticated civic access",
+        "editorialAuthority": "Founder civic profile only",
+        "analyticsAuthority": "Founder civic profile only",
+        "protectedStorage": "Encrypted R2 civic storage",
+        "databaseIntegrity": "Foreign-key verification passed",
+        "releaseTests": 65,
+        "changes": [
+          "Production civic authentication enabled",
+          "Private Founder civic profile migrated",
+          "Protected Learning evidence and evaluations migrated",
+          "Editorial Studio restricted to the Founder profile",
+          "Analytics restricted to the Founder profile",
+          "Local-only destructive controls kept out of production"
+        ]
+      }
+    }
+  ]
+}
