@@ -15,6 +15,12 @@
   "ai": {
     "binding": "AI"
   },
+  "r2_buckets": [
+    {
+      "binding": "CIVIC_FILES",
+      "bucket_name": "utopian-civic-files"
+    }
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 0.1
