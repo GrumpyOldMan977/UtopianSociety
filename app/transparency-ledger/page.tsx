@@ -26,6 +26,6 @@ export default function TransparencyLedgerPage() {
     <div className="ledger-page-body">
       <TransparencyLedger />
     </div>
-    <footer className="site-footer"><span>The Utopian Society Corpus</span><p>A living framework for ethical, civic, and human continuity.</p><Link href="/">Enter through the frontispiece ↑</Link></footer>
+    <footer className="site-footer"><span>The Utopian Society</span><p>A living framework for ethical, civic, and human continuity.</p><Link href="/">Enter through the frontispiece ↑</Link></footer>
   </main>;
 }

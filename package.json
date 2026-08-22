@@ -6,19 +6,34 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
+    "dev": "vinext dev --port 9877",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "vinext build && node --test tests/rendered-html.test.mjs",
+    "test": "vinext build && node --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "ledger:register-release": "node scripts/register-ledger-release.mjs"
+    "civic:dev:local": "wrangler dev --cwd cloudflare/civic-ledger --config wrangler.local.jsonc --port 8788",
+    "civic:migrate:local": "wrangler d1 migrations apply utopian-civic-v3-local --config cloudflare/civic-ledger/wrangler.local.jsonc --local",
+    "civic:seed:local": "wrangler d1 execute utopian-civic-v3-local --config cloudflare/civic-ledger/wrangler.local.jsonc --local --file cloudflare/civic-ledger/local/seed.sql",
+    "civic:seed:editorial": "node scripts/seed-editorial-local.mjs",
+    "civic:query:local": "wrangler d1 execute utopian-civic-v3-local --config cloudflare/civic-ledger/wrangler.local.jsonc --local --command",
+    "civic:test:assessment": "node scripts/test-local-assessment.mjs",
+    "civic:test:learning": "node scripts/test-local-learning-evaluation.mjs",
+    "civic:test:workflow": "node scripts/test-local-civic-workflow.mjs",
+    "civic:test:routes": "node scripts/test-local-routes.mjs",
+    "civic:reset:test-fixture": "node scripts/reset-local-test-fixture.mjs",
+    "qa:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-local-qa.ps1",
+    "ledger:register-release": "node scripts/register-ledger-release.mjs",
+    "parity:v2": "node scripts/verify-v2-parity.mjs"
   },
   "dependencies": {
+    "@tesseract.js-data/eng": "1.0.0",
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
+    "pdfjs-dist": "5.4.624",
     "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react-dom": "19.2.6",
+    "tesseract.js": "7.0.0"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",

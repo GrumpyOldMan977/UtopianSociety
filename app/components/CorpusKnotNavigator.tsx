@@ -7,6 +7,7 @@ import {
   isNavigatorView,
   navigatorViews,
   NavigatorNode,
+  NavigatorView,
   NavigatorViewId,
   RingPosition,
 } from "../lib/circle-navigation";
@@ -184,7 +185,7 @@ export function CorpusKnotNavigator({ initialView = "root", compact = false }: {
     const trail: { id: NavigatorViewId; label: string }[] = [];
     let cursor: NavigatorViewId | undefined = viewId;
     while (cursor) {
-      const item = navigatorViews[cursor];
+      const item: NavigatorView = navigatorViews[cursor];
       trail.unshift({ id: cursor, label: cursor === "root" ? "Corpus" : item.eyebrow });
       cursor = item.parent;
     }

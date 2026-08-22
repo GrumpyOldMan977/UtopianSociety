@@ -1,7 +1,7 @@
 import postData from "../data/wordpress-posts.json";
 import { gregorianDateUTC, utopianDateLong } from "./utopian-time";
 
-export type ImportedPost = {
+type ImportedPostSource = {
   id: number;
   slug: string;
   title: string;
@@ -20,6 +20,11 @@ export type ImportedPost = {
   wordCount: number;
 };
 
+export type ImportedPost = ImportedPostSource & {
+  utopianDateLabel: string;
+  gregorianDateLabel: string;
+};
+
 const decodeDisplayText = (value: string) => value
   .replaceAll("&hellip;", "…")
   .replaceAll("&mdash;", "—")
@@ -34,7 +39,7 @@ function publicationDate(value: string) {
   return new Date(Date.UTC(year, month - 1, day, 12));
 }
 
-export const importedPosts = (postData as ImportedPost[]).map((post) => ({
+export const importedPosts: ImportedPost[] = (postData as ImportedPostSource[]).map((post) => ({
   ...post,
   title: decodeDisplayText(post.title),
   excerpt: decodeDisplayText(post.excerpt),

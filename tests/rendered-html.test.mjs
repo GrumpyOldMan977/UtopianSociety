@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
 async function render(pathname = "/") {
@@ -29,16 +29,28 @@ test("server-renders the Utopian Society frontispiece", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>The Utopian Society Corpus<\/title>/i);
+  assert.match(html, /<title>The Utopian Society<\/title>/i);
   assert.match(html, /Enter the living corpus/);
   assert.match(html, /Utopian[\s\S]*Reference Time/);
   assert.match(html, /Five interlocking rings/i);
   assert.match(html, /Live civic wire/);
-  assert.match(html, /BETA · Civic portal under active construction/);
+  assert.match(html, /BETA · Public site frozen for review, updates planned Spiraday, Solvane 28, Utopian Year 1, once judging completes\./);
   assert.match(html, /Weather: Open-Meteo/);
   assert.match(html, /Headlines: BBC News/);
   assert.doesNotMatch(html, /Current site/i);
+  assert.doesNotMatch(html, /href="\/editorial"/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|Codex is working/i);
+});
+
+test("Editorial Studio remains private until civic authority is verified", async () => {
+  const response = await render("/editorial");
+  assert.equal(response.status, 200);
+
+  const html = await response.text();
+  assert.match(html, /Editorial Studio is private/);
+  assert.match(html, /Verifying your civic authority/);
+  assert.doesNotMatch(html, /Compose a local blog draft/);
+  assert.doesNotMatch(html, /Prepare a ticker notice/);
 });
 
 test("server-renders Learning as a citizen-facing civic portal", async () => {
@@ -70,6 +82,20 @@ test("server-renders Immigration as an operational civic portal", async () => {
   assert.match(html, /Citizenship entered freely may be left freely/);
   assert.match(html, /recognizes symbolic online citizenship/);
   assert.match(html, /Immigration Codex/);
+});
+
+test("server-renders the WordPress archive with Utopian publication dates", async () => {
+  const archiveResponse = await render("/blogs-essays");
+  assert.equal(archiveResponse.status, 200);
+  const archiveHtml = await archiveResponse.text();
+  assert.match(archiveHtml, /Minday, Solvane 11, Utopian Year 1/);
+  assert.doesNotMatch(archiveHtml, />July 20, 2026</);
+
+  const articleResponse = await render("/blogs-essays/the-utopian-society-enters-openai-build-week");
+  assert.equal(articleResponse.status, 200);
+  const articleHtml = await articleResponse.text();
+  assert.match(articleHtml, />Minday, Solvane 11, Utopian Year 1<\/dd>/);
+  assert.match(articleHtml, /title="Gregorian archival reference: July 20, 2026"/);
 });
 
 test("server-renders the complete seven-Circle civic directory", async () => {
@@ -186,6 +212,76 @@ test("server-renders imported essays in the new local manuscript template", asyn
   assert.match(html, /View the source edition/);
 });
 
+test("Lore stories expose the same read-aloud experience as essays", async () => {
+  const response = await render("/lore/birth-of-the-moon");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Listen to this entry/);
+  assert.match(html, /id="lore-authored-text"/);
+  assert.match(html, /Playback is generated locally and is not retained by the Corpus/);
+  assert.match(html, /The Long Fire/);
+});
+
+test("Lore publishes 9 Kingdoms Solitaire as a local playable chronicle", async () => {
+  const shelfResponse = await render("/lore");
+  assert.equal(shelfResponse.status, 200);
+  const shelfHtml = await shelfResponse.text();
+  assert.match(shelfHtml, /9 Kingdoms Solitaire/);
+  assert.match(shelfHtml, /href="\/lore\/9-kingdoms-solitaire"/);
+
+  const gameResponse = await render("/lore/9-kingdoms-solitaire");
+  assert.equal(gameResponse.status, 200);
+  const gameHtml = await gameResponse.text();
+  assert.match(gameHtml, /Playable lore/);
+  assert.match(gameHtml, /The Nine Kingdoms/);
+  assert.match(gameHtml, /196-card court|196 figures/);
+  assert.match(gameHtml, /Field before hand/);
+  assert.match(gameHtml, /The Chapel/);
+  assert.match(gameHtml, /The Graveyard/);
+  assert.match(gameHtml, /Fourteen traditions\. One hierarchy\./);
+  assert.match(gameHtml, /Do this now/);
+  assert.match(gameHtml, /Only this card moves/);
+  assert.match(gameHtml, /Court[\s\S]{0,40}guarded/);
+  assert.match(gameHtml, /Castle[\s\S]{0,40}guarded/);
+  assert.match(gameHtml, />34<\/b>[\s\S]{0,40}\/ 196 unveiled/);
+  assert.match(gameHtml, /aria-haspopup="dialog"/);
+  assert.match(gameHtml, /Open details for Kingdom I/);
+  assert.match(gameHtml, /living gallery/i);
+  assert.match(gameHtml, /Your unveiled court[\s\S]{0,300}196[\s\S]{0,30}collected/);
+  assert.match(gameHtml, /All unlocked/);
+  assert.match(gameHtml, /Saved only in this browser/);
+
+  const gameComponent = await readFile(new URL("../app/components/NineKingdomsGame.tsx", import.meta.url), "utf8");
+  assert.match(gameComponent, /Every revealed card still present in this Kingdom/);
+  assert.match(gameComponent, /Below the Castle · depth/);
+  assert.match(gameComponent, /Royal[\s\S]*Noble[\s\S]*Gentry/);
+  assert.match(gameComponent, /Portrait awaiting full art/);
+  assert.match(gameComponent, /className=\{styles\.cardMeta\}/);
+  assert.match(gameComponent, /nine-kingdoms-unlocked-cards-v1/);
+  assert.match(gameComponent, /window\.localStorage\.setItem/);
+  assert.match(gameComponent, /function GalleryCard/);
+
+  const gameCss = await readFile(new URL("../app/lore/9-kingdoms-solitaire/nine-kingdoms.module.css", import.meta.url), "utf8");
+  assert.match(gameCss, /\.card\{[^}]*aspect-ratio:2\/3/);
+  assert.match(gameCss, /\.cardArt\{[^}]*position:absolute[^}]*inset:0/);
+  assert.match(gameCss, /\.cardMeta\{[^}]*position:absolute[^}]*border-top:3px solid var\(--card-suit\)/);
+  assert.match(gameCss, /\.galleryCard\{[^}]*aspect-ratio:2\/3/);
+  assert.match(gameCss, /\.galleryDialog\{/);
+
+  const gameModel = await readFile(new URL("../app/lib/nine-kingdoms.ts", import.meta.url), "utf8");
+  assert.match(gameModel, /artPath: cardArtworkPath\(suit, rank, displayTitle\)/);
+  assert.match(gameModel, /if \(suit\.id === "gaian"\) return undefined/);
+
+  const cardsRoot = new URL("../public/images/lore/9-kingdoms-solitaire/cards/", import.meta.url);
+  const completedSuits = ["arcane", "crescent", "current", "cycle", "doctrine", "logos", "mystic", "order", "sanctum", "scripture", "spirit", "void", "will"];
+  const importedSuits = (await readdir(cardsRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  assert.deepEqual(importedSuits, completedSuits);
+  for (const suit of completedSuits) {
+    const cards = (await readdir(new URL(`${suit}/`, cardsRoot))).filter((filename) => filename.endsWith(".webp"));
+    assert.equal(cards.length, 14, `${suit} must contain its complete 14-card court`);
+  }
+});
+
 test("server-renders an imported entry without an assigned WordPress feature image", async () => {
   const response = await render("/blogs-essays/the-fornax");
   assert.equal(response.status, 200);
@@ -221,10 +317,14 @@ test("the civic registry, artwork, responsive safeguards, and local-only prototy
 
   const interactiveFiles = await Promise.all([
     "CivicActionStudio.tsx", "CivicPortalFeature.tsx", "TimeObservanceCalendar.tsx", "LearningCivicStudio.tsx",
-    "ImmigrationApplication.tsx", "ImmigrationThreshold.tsx", "CitizenshipExit.tsx", "HealingWholePerson.tsx", "SexualCareExplorer.tsx",
+    "ImmigrationThreshold.tsx", "CitizenshipExit.tsx", "HealingWholePerson.tsx", "SexualCareExplorer.tsx",
   ].map((filename) => readFile(new URL(`../app/components/${filename}`, import.meta.url), "utf8")));
   const interactionSource = interactiveFiles.join("\n");
   assert.doesNotMatch(interactionSource, /localStorage|sessionStorage|indexedDB|XMLHttpRequest|navigator\.sendBeacon|fetch\(|\.submit\(|FormData/);
+
+  const immigrationApplication = await readFile(new URL("../app/components/ImmigrationApplication.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(immigrationApplication, /localStorage|indexedDB|XMLHttpRequest|navigator\.sendBeacon|fetch\(|\.submit\(|FormData/);
+  assert.match(immigrationApplication, /utopia\.pendingLoginName/);
   assert.match(interactionSource, /aria-controls/);
   assert.match(interactionSource, /role="region"/);
   assert.match(interactionSource, /ArrowRight/);

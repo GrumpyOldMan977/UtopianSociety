@@ -46,6 +46,6 @@ export default function CirclesDirectoryPage() {
       <Link href="/corpus/article-xvii-governance-structure-circles">Read the canonical topology →</Link>
     </section>
 
-    <footer className="site-footer"><span>The Utopian Society Corpus</span><p>A living framework for ethical, civic, and human continuity.</p><Link href="/">Enter through the frontispiece ↑</Link></footer>
+    <footer className="site-footer"><span>The Utopian Society</span><p>A living framework for ethical, civic, and human continuity.</p><Link href="/">Enter through the frontispiece ↑</Link></footer>
   </main>;
 }

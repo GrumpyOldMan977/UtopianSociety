@@ -53,6 +53,6 @@ export default function ImmigrationPage() {
       </nav>
     </section>
 
-    <footer className="site-footer"><span>The Utopian Society Corpus</span><p>Belonging entered freely, understood clearly, and recorded responsibly.</p><Link href="/">Enter through the frontispiece ↑</Link></footer>
+    <footer className="site-footer"><span>The Utopian Society</span><p>Belonging entered freely, understood clearly, and recorded responsibly.</p><Link href="/">Enter through the frontispiece ↑</Link></footer>
   </main>;
 }

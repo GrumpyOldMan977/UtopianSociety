@@ -17,8 +17,14 @@ type TickerPayload = {
   };
   population: PopulationSummary | null;
   headlines: Array<{ title: string; url: string }>;
+  announcements: Array<{ announcementId: string; label: string; href: string | null; priority: number }>;
   updatedAt: string;
 };
+
+type TickerItem = { label: string; href?: string };
+
+const WEATHER_SOURCE =
+  "https://open-meteo.com/en/docs#latitude=-30&longitude=-130&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m";
 
 function civicTime(date: Date) {
   const civicDate = utopianDate(date);
@@ -59,24 +65,28 @@ export function CivicTicker() {
     };
   }, []);
 
-  const items = useMemo(() => {
+  const items = useMemo<TickerItem[]>(() => {
     const population = payload?.population;
     const populationCopy = population
       ? `Population: ${population.active.toLocaleString()}`
       : "Population · Awaiting the public Citizen Register";
     return [
-      { label: "BETA · Civic portal under active construction" },
       {
-        label: "Judging Notice · Public site frozen for review · Local development continues · Next public update: Spiraday, Solvane 28, Utopian Year 1",
+        label: "BETA · Public site frozen for review, updates planned Spiraday, Solvane 28, Utopian Year 1, once judging completes.",
+        href: "/blogs-essays/the-utopian-society-enters-openai-build-week",
       },
+      ...(payload?.announcements ?? []).map((announcement) => ({
+        label: `Local · ${announcement.label}`,
+        href: announcement.href || "/blogs-essays",
+      })),
       {
         label: "Local News · The Utopian Society enters OpenAI Build Week · View the public submission",
         href: "https://devpost.com/software/the-utopian-society",
       },
-      { label: populationCopy },
+      { label: populationCopy, href: "/transparency-ledger#population" },
       payload?.weather
-        ? { label: `South Pacific Gyre · ${payload.weather.temperatureF}°F · ${payload.weather.condition} · wind ${payload.weather.windDirection} ${payload.weather.windMph} mph${payload.weather.seaTemperatureF !== null ? ` · sea ${payload.weather.seaTemperatureF}°F` : ""}${payload.weather.waveHeightFt !== null ? ` · swell ${payload.weather.waveHeightFt} ft` : ""}` }
-        : { label: "South Pacific Gyre · Awaiting the next open-ocean observation" },
+        ? { label: `South Pacific Gyre · ${payload.weather.temperatureF}°F · ${payload.weather.condition} · wind ${payload.weather.windDirection} ${payload.weather.windMph} mph${payload.weather.seaTemperatureF !== null ? ` · sea ${payload.weather.seaTemperatureF}°F` : ""}${payload.weather.waveHeightFt !== null ? ` · swell ${payload.weather.waveHeightFt} ft` : ""}`, href: WEATHER_SOURCE }
+        : { label: "South Pacific Gyre · Awaiting the next open-ocean observation", href: WEATHER_SOURCE },
       { label: now ? `Utopian Reference Time · ${civicTime(now)}` : "Utopian Reference Time · Synchronizing" },
       { label: "Public record · Transparency Ledger operational", href: "/transparency-ledger" },
       ...(payload?.headlines ?? []).map((headline) => ({ label: `World · ${headline.title}`, href: headline.url })),
@@ -89,12 +99,18 @@ export function CivicTicker() {
     <section className="civic-ticker" aria-label="Live civic wire">
       <span className="ticker-status" aria-hidden="true"><i /> Live civic wire</span>
       <div className="ticker-window">
-        <div className="ticker-track" aria-hidden="true" style={{ "--ticker-duration": duration } as CSSProperties}>
+        <div className="ticker-track" style={{ "--ticker-duration": duration } as CSSProperties} aria-hidden="true">
           {[0, 1].map((copy) => <span className="ticker-copy" key={copy}>
-            {items.map((item, index) => <span className="ticker-item" key={`${copy}-${index}`}><b>◆</b>{item.href ? <a href={item.href} target={item.href.startsWith("http") ? "_blank" : undefined} rel={item.href.startsWith("http") ? "noreferrer" : undefined}>{item.label}</a> : item.label}</span>)}
+            {items.map((item, index) => <span className="ticker-item" key={`${copy}-${index}`}><b>◆</b>{item.href ? <a href={item.href} tabIndex={-1} target={item.href.startsWith("http") ? "_blank" : undefined} rel={item.href.startsWith("http") ? "noreferrer" : undefined}>{item.label}</a> : item.label}</span>)}
           </span>)}
         </div>
-        <p className="ticker-a11y" aria-live="polite">{items.map((item) => item.label).join(". ")}</p>
+        <ul className="ticker-a11y">
+          {items.map((item, index) => <li key={`accessible-${index}`}>
+            {item.href
+              ? <a href={item.href} target={item.href.startsWith("http") ? "_blank" : undefined} rel={item.href.startsWith("http") ? "noreferrer" : undefined}>{item.label}</a>
+              : item.label}
+          </li>)}
+        </ul>
       </div>
       <span className="ticker-credit">
         <a href="/transparency-ledger">Ledger: Civic Portal</a>

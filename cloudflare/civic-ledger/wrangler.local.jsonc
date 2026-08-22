@@ -1,0 +1,34 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "utopian-civic-ledger-v3-local",
+  "main": "src/index.js",
+  "compatibility_date": "2026-05-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "utopian-civic-v3-local",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "CIVIC_FILES",
+      "bucket_name": "utopian-civic-v3-local-files"
+    }
+  ],
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  },
+  "vars": {
+    "DEPLOYMENT_MODE": "local-v3",
+    "PUBLIC_SITE_FROZEN": "true",
+    "EDITORIAL_AUTHORIZED_LOGINS": "TheFounder"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

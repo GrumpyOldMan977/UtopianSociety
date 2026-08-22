@@ -99,6 +99,6 @@ export default async function ImportedPostPage({ params }: { params: Promise<{ s
       {newer ? <Link href={postPath(newer.slug)}><small>Newer entry</small><strong>{newer.title}</strong><span>←</span></Link> : <span />}
       {older ? <Link href={postPath(older.slug)}><small>Older entry</small><strong>{older.title}</strong><span>→</span></Link> : <span />}
     </nav>
-    <footer className="site-footer"><span>The Utopian Society Corpus</span><p>The West Ring preserves thought while it is still becoming.</p><Link href="/">Enter through the frontispiece ↑</Link></footer>
+    <footer className="site-footer"><span>The Utopian Society</span><p>The West Ring preserves thought while it is still becoming.</p><Link href="/">Enter through the frontispiece ↑</Link></footer>
   </main>;
 }

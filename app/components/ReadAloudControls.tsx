@@ -3,6 +3,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type ReaderState = "idle" | "playing" | "paused" | "finished";
+const VOICE_PREFERENCE_KEY = "utopian-reader-voice-v2";
+
+function normalizedLocale(value: string) {
+  return value.trim().replaceAll("_", "-").toLowerCase();
+}
+
+function localeVoice(voices: SpeechSynthesisVoice[]) {
+  const browserLocales = (navigator.languages?.length ? navigator.languages : [navigator.language])
+    .map(normalizedLocale)
+    .filter(Boolean);
+
+  for (const locale of browserLocales) {
+    const exact = voices.find((voice) => normalizedLocale(voice.lang) === locale);
+    if (exact) return exact;
+  }
+
+  for (const locale of browserLocales) {
+    const language = locale.split("-")[0];
+    const sameLanguage = voices.find((voice) => normalizedLocale(voice.lang).split("-")[0] === language);
+    if (sameLanguage) return sameLanguage;
+  }
+
+  return voices.find((voice) => voice.default) ?? voices[0];
+}
 
 function speechChunks(value: string) {
   const normalized = value.replace(/\s+/g, " ").trim();
@@ -60,9 +84,9 @@ export function ReadAloudControls({ targetId, title }: { targetId: string; title
       setVoices(available);
       setVoiceName((current) => {
         if (current && available.some((voice) => voice.name === current)) return current;
-        const saved = window.localStorage.getItem("utopian-reader-voice");
+        const saved = window.localStorage.getItem(VOICE_PREFERENCE_KEY);
         if (saved && available.some((voice) => voice.name === saved)) return saved;
-        return available.find((voice) => voice.default)?.name ?? available[0]?.name ?? "";
+        return localeVoice(available)?.name ?? "";
       });
     };
 
@@ -74,10 +98,6 @@ export function ReadAloudControls({ targetId, title }: { targetId: string; title
       window.speechSynthesis.removeEventListener("voiceschanged", loadVoices);
     };
   }, []);
-
-  useEffect(() => {
-    if (voiceName) window.localStorage.setItem("utopian-reader-voice", voiceName);
-  }, [voiceName]);
 
   const selectedVoice = useMemo(
     () => voices.find((voice) => voice.name === voiceName),
@@ -169,7 +189,11 @@ export function ReadAloudControls({ targetId, title }: { targetId: string; title
     <div className="read-aloud-settings">
       <label>
         <span>Voice</span>
-        <select value={voiceName} onChange={(event) => { stop(); setVoiceName(event.target.value); }} disabled={!voices.length}>
+        <select value={voiceName} onChange={(event) => {
+          stop();
+          setVoiceName(event.target.value);
+          window.localStorage.setItem(VOICE_PREFERENCE_KEY, event.target.value);
+        }} disabled={!voices.length}>
           {voices.map((voice) => <option value={voice.name} key={`${voice.name}-${voice.lang}`}>{voice.name} · {voice.lang}</option>)}
         </select>
       </label>

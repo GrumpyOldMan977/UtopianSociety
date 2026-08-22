@@ -152,7 +152,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open <http://localhost:3000>.
+Open <http://localhost:9877>.
 
 The public reading experience does not require credentials. `WPCOM_ACCESS_TOKEN` is optional and is used only for private WordPress view statistics when available.
 

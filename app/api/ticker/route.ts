@@ -70,7 +70,7 @@ function parseHeadlines(xml: string) {
     .filter((headline) => headline.title && headline.url.startsWith("http"));
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const weatherUrl = new URL("https://api.open-meteo.com/v1/forecast");
   weatherUrl.search = new URLSearchParams({
     latitude: String(GYRE_LATITUDE),
@@ -94,8 +94,12 @@ export async function GET() {
 
   const newsUrl = "https://feeds.bbci.co.uk/news/world/rss.xml";
   const populationUrl = `${CIVIC_LEDGER_API}/v1/population`;
+  const requestHost = request.headers.get("host") || "";
+  const localOrigin = requestHost.startsWith("localhost:") || requestHost.startsWith("127.0.0.1:")
+    ? `http://${requestHost}`
+    : null;
 
-  const [weatherResult, marineResult, newsResult, populationResult] = await Promise.allSettled([
+  const [weatherResult, marineResult, newsResult, populationResult, announcementResult] = await Promise.allSettled([
     fetch(weatherUrl, { headers: { Accept: "application/json" } }).then(async (response) => {
       if (!response.ok) throw new Error(`Weather source returned ${response.status}`);
       return response.json() as Promise<WeatherPayload>;
@@ -112,12 +116,22 @@ export async function GET() {
       if (!response.ok) throw new Error(`Population source returned ${response.status}`);
       return response.json() as Promise<PopulationSummary>;
     }),
+    localOrigin
+      ? fetch("http://127.0.0.1:8788/v3/editorial/announcements", {
+          headers: { Accept: "application/json", Origin: localOrigin },
+          cache: "no-store",
+        }).then(async (response) => {
+          if (!response.ok) throw new Error(`Local announcement source returned ${response.status}`);
+          return response.json() as Promise<{ announcements: Array<{ announcementId: string; label: string; href: string | null; priority: number }> }>;
+        })
+      : Promise.resolve({ announcements: [] }),
   ]);
 
   const weather = weatherResult.status === "fulfilled" ? weatherResult.value.current : undefined;
   const marine = marineResult.status === "fulfilled" ? marineResult.value.current : undefined;
   const headlines = newsResult.status === "fulfilled" ? parseHeadlines(newsResult.value) : [];
   const population = populationResult.status === "fulfilled" ? populationResult.value : null;
+  const announcements = announcementResult.status === "fulfilled" ? announcementResult.value.announcements : [];
 
   const seaFahrenheit = typeof marine?.sea_surface_temperature === "number"
     ? marine.sea_surface_temperature * 9 / 5 + 32
@@ -141,6 +155,7 @@ export async function GET() {
       currentMph: typeof marine?.ocean_current_velocity === "number" ? Number(marine.ocean_current_velocity.toFixed(1)) : null,
     } : null,
     headlines,
+    announcements,
     population,
     updatedAt: new Date().toISOString(),
   }, {

@@ -58,6 +58,6 @@ export default function SexualReproductiveCarePage() {
       <div><span className="eyebrow">Corpus authority</span><h2 id="sexual-authority-title">Freedom, consent, and context remain companions.</h2><p>This portal translates the civic system for daily use. The governing documents define the actual rights, credentials, limits, review processes, and lawful methodologies.</p></div>
       <nav aria-label="Sexual and reproductive care governing sources"><Link href="/corpus/circle-of-healing-charter"><span>Primary care authority</span><b>Circle of Healing Charter</b><i>→</i></Link><Link href="/corpus/sexual-expression-codex"><span>Embodied civic ethic</span><b>Sexual Expression Codex</b><i>→</i></Link><Link href="/corpus/article-iii-rights-freedoms"><span>Constitutional liberty</span><b>Article III · Rights & Freedoms</b><i>→</i></Link><Link href="/corpus/article-viii-continuance-medical-ethics"><span>Medical sovereignty</span><b>Article VIII · Continuance & Medical Ethics</b><i>→</i></Link></nav>
     </section>
-    <footer className="site-footer"><span>The Utopian Society Corpus</span><p>The honest body and truthful heart are not adversaries of civility.</p><Link href="/">Enter through the frontispiece ↑</Link></footer>
+    <footer className="site-footer"><span>The Utopian Society</span><p>The honest body and truthful heart are not adversaries of civility.</p><Link href="/">Enter through the frontispiece ↑</Link></footer>
   </main>;
 }

@@ -271,7 +271,7 @@ const familyViews = Object.fromEntries(
       ],
     }];
   }),
-) as Record<NavigatorViewId, NavigatorView>;
+) as Partial<Record<NavigatorViewId, NavigatorView>>;
 
 export const navigatorViews: Record<NavigatorViewId, NavigatorView> = {
   root: {
@@ -306,9 +306,9 @@ export const navigatorViews: Record<NavigatorViewId, NavigatorView> = {
     description: "The public interface between the governing corpus and the people who learn, participate, seek care, request review, and keep the common record.",
     parent: "root",
     nodes: [
-      { id: "directory", title: "Civic Directory", subtitle: "Every Circle, office, and public interface", position: "north", href: "/circles" },
-      { id: "pathways", title: "Citizen Pathways", subtitle: "Entry, standing, rights, and voluntary exit", position: "east", nextView: "civic-life" },
-      { id: "services", title: "Services & Participation", subtitle: "Care, learning, contribution, and support", position: "south", nextView: "civic-services" },
+      { id: "login", title: "Login", subtitle: "Open your private civic profile", position: "north", href: "/login", primary: true },
+      { id: "immigration", title: "Immigration", subtitle: "Begin the Hopeful pathway", position: "east", href: "/circles/immigration", primary: true },
+      { id: "directory", title: "Civic Directory", subtitle: "Circles, services, and participation", position: "south", href: "/circles" },
       { id: "record", title: "Public Record", subtitle: "Transparency, calendars, status, and review", position: "west", nextView: "public-record" },
     ],
   },
@@ -319,7 +319,7 @@ export const navigatorViews: Record<NavigatorViewId, NavigatorView> = {
     description: "Membership becomes tangible through belonging, protected freedom, reciprocal responsibility, and an open path of entry.",
     parent: "civic-portal",
     nodes: [
-      { id: "membership", title: "Membership", subtitle: "Citizenship and civic standing", position: "north", href: corpusPath("article-ii-membership-citizenship") },
+      { id: "membership", title: "My Civic Profile", subtitle: "Private standing, learning, care, contribution, and common credit", position: "north", href: "/login", primary: true },
       { id: "immigration", title: "Immigration", subtitle: "Begin the Hopeful pathway", position: "east", href: "/circles/immigration", primary: true },
       { id: "rights", title: "Rights & Freedoms", subtitle: "The protected civic field", position: "south", href: corpusPath("article-iii-rights-freedoms") },
       { id: "duties", title: "Duties", subtitle: "Reciprocity and responsibility", position: "west", href: corpusPath("article-iv-duties-responsibilities") },

@@ -1,10 +1,16 @@
 "use client";
 
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import Link from "next/link";
-import { ASSESSMENT_PASSING_SCORE, immigrationDomains, immigrationQuestions } from "../lib/immigration-assessment";
+import {
+  ASSESSMENT_PASSING_SCORE,
+  CATEGORY_PASSING_SCORE,
+  SCORED_QUESTION_COUNT,
+  type ImmigrationAssessmentAttempt,
+  type ImmigrationAssessmentResult,
+} from "../lib/immigration-assessment";
 import { gregorianDateUTC, utopianDate } from "../lib/utopian-time";
-import { issueNaturalizationCertificate } from "../lib/civic-ledger";
+import { issueNaturalizationCertificate, scoreImmigrationAssessment, startImmigrationAssessment } from "../lib/civic-ledger";
 
 type Stage = "declaration" | "assessment" | "result" | "oath" | "certificate";
 
@@ -14,6 +20,7 @@ type Certificate = {
   score: number;
   utopianDate: string;
   gregorianDate: string;
+  loginName?: string;
   preview?: boolean;
 };
 
@@ -37,10 +44,14 @@ export function ImmigrationApplication() {
   const [motivation, setMotivation] = useState("");
   const [contribution, setContribution] = useState("");
   const [acknowledgements, setAcknowledgements] = useState([false, false, false, false]);
-  const [answers, setAnswers] = useState<number[]>(() => Array(immigrationQuestions.length).fill(-1));
+  const [attempt, setAttempt] = useState<ImmigrationAssessmentAttempt | null>(null);
+  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [easterResponse, setEasterResponse] = useState("");
   const [assessmentPage, setAssessmentPage] = useState(0);
   const [assessmentError, setAssessmentError] = useState("");
-  const [score, setScore] = useState<number | null>(null);
+  const [assessmentStarting, setAssessmentStarting] = useState(false);
+  const [assessmentScoring, setAssessmentScoring] = useState(false);
+  const [assessmentResult, setAssessmentResult] = useState<ImmigrationAssessmentResult | null>(null);
   const [signature, setSignature] = useState("");
   const [oathAccepted, setOathAccepted] = useState(false);
   const [certificate, setCertificate] = useState<Certificate | null>(null);
@@ -49,21 +60,15 @@ export function ImmigrationApplication() {
   const issuanceKey = useRef("");
 
   const activeStep = stageNumber(stage);
-  const totalPages = Math.ceil(immigrationQuestions.length / PAGE_SIZE);
-  const visibleQuestions = immigrationQuestions.slice(assessmentPage * PAGE_SIZE, (assessmentPage + 1) * PAGE_SIZE);
-  const answeredCount = answers.filter((answer) => answer >= 0).length;
-
-  const domainResults = useMemo(() => immigrationDomains.map((domain) => {
-    const questions = immigrationQuestions.filter((question) => question.domain === domain);
-    const correct = questions.filter((question) => answers[question.id - 1] === question.correctIndex).length;
-    return { domain, correct, total: questions.length };
-  }), [answers]);
+  const totalPages = Math.ceil((attempt?.questions.length || 0) / PAGE_SIZE);
+  const visibleQuestions = attempt?.questions.slice(assessmentPage * PAGE_SIZE, (assessmentPage + 1) * PAGE_SIZE) || [];
+  const answeredCount = Object.keys(answers).length;
 
   function updateAcknowledgement(index: number, checked: boolean) {
     setAcknowledgements((current) => current.map((value, currentIndex) => currentIndex === index ? checked : value));
   }
 
-  function beginAssessment(event: FormEvent<HTMLFormElement>) {
+  async function beginAssessment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const normalizedContact = contact.trim();
     if (normalizedContact && !contactAddressPattern.test(normalizedContact)) {
@@ -73,17 +78,31 @@ export function ImmigrationApplication() {
     if (!acknowledgements.every(Boolean)) return;
     setContact(normalizedContact);
     setContactError("");
-    setStage("assessment");
-    document.getElementById("immigration-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setAssessmentStarting(true);
+    setAssessmentError("");
+    try {
+      const prepared = await startImmigrationAssessment();
+      setAttempt(prepared);
+      setAnswers({});
+      setEasterResponse("");
+      setAssessmentPage(0);
+      setAssessmentResult(null);
+      setStage("assessment");
+      document.getElementById("immigration-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (error) {
+      setAssessmentError(error instanceof Error ? error.message : "The civic server could not prepare an assessment.");
+    } finally {
+      setAssessmentStarting(false);
+    }
   }
 
-  function answerQuestion(questionId: number, optionIndex: number) {
-    setAnswers((current) => current.map((answer, index) => index === questionId - 1 ? optionIndex : answer));
+  function answerQuestion(questionId: string, optionIndex: number) {
+    setAnswers((current) => ({ ...current, [questionId]: optionIndex }));
     setAssessmentError("");
   }
 
   function changeAssessmentPage(direction: -1 | 1) {
-    if (direction === 1 && visibleQuestions.some((question) => answers[question.id - 1] < 0)) {
+    if (direction === 1 && visibleQuestions.some((question) => question.scored && answers[question.id] === undefined)) {
       setAssessmentError("Please answer every question on this page before continuing.");
       return;
     }
@@ -92,30 +111,55 @@ export function ImmigrationApplication() {
     document.getElementById("assessment-heading")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function completeAssessment() {
-    if (visibleQuestions.some((question) => answers[question.id - 1] < 0) || answeredCount !== immigrationQuestions.length) {
+  async function completeAssessment() {
+    if (!attempt || visibleQuestions.some((question) => question.scored && answers[question.id] === undefined) || answeredCount !== SCORED_QUESTION_COUNT) {
       setAssessmentError("All 100 questions must be answered before the assessment can be completed.");
       return;
     }
-    const correct = immigrationQuestions.filter((question) => answers[question.id - 1] === question.correctIndex).length;
-    setScore(correct);
-    setStage("result");
-    document.getElementById("immigration-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setAssessmentScoring(true);
+    setAssessmentError("");
+    try {
+      const result = await scoreImmigrationAssessment({
+        attemptId: attempt.attemptId,
+        answers: attempt.questions.filter((question) => question.scored).map((question) => ({
+          questionId: question.id,
+          optionIndex: answers[question.id],
+        })),
+        easterResponse,
+      });
+      setAssessmentResult(result);
+      setStage("result");
+      document.getElementById("immigration-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (error) {
+      setAssessmentError(error instanceof Error ? error.message : "The civic server could not score this assessment.");
+    } finally {
+      setAssessmentScoring(false);
+    }
   }
 
-  function retakeAssessment() {
-    setAnswers(Array(immigrationQuestions.length).fill(-1));
-    setAssessmentPage(0);
-    setScore(null);
-    setAssessmentError("");
-    setIssuanceError("");
-    issuanceKey.current = "";
-    setStage("assessment");
+  async function retakeAssessment() {
+    setAssessmentStarting(true);
+    try {
+      const prepared = await startImmigrationAssessment();
+      setAttempt(prepared);
+      setAnswers({});
+      setEasterResponse("");
+      setAssessmentPage(0);
+      setAssessmentResult(null);
+      setAssessmentError("");
+      setIssuanceError("");
+      issuanceKey.current = "";
+      setStage("assessment");
+    } catch (error) {
+      setAssessmentError(error instanceof Error ? error.message : "The civic server could not prepare a new assessment.");
+    } finally {
+      setAssessmentStarting(false);
+    }
   }
 
   async function issueCertificate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (score === null || score < ASSESSMENT_PASSING_SCORE || !oathAccepted || signature.trim().toLocaleLowerCase() !== civicName.trim().toLocaleLowerCase()) return;
+    if (!assessmentResult?.passed || !attempt || !oathAccepted || signature.trim().toLocaleLowerCase() !== civicName.trim().toLocaleLowerCase()) return;
     setIssuing(true);
     setIssuanceError("");
     if (!issuanceKey.current) issuanceKey.current = crypto.randomUUID();
@@ -124,11 +168,12 @@ export function ImmigrationApplication() {
         civicName: civicName.trim(),
         signature: signature.trim(),
         oathAccepted,
-        assessmentVersion: "immigration-v1",
-        answers,
+        assessmentVersion: "immigration-v2",
+        assessmentAttemptId: attempt.attemptId,
         issuanceKey: issuanceKey.current,
       });
-      setCertificate(issued.certificate);
+      if (issued.account?.loginName) sessionStorage.setItem("utopia.pendingLoginName", issued.account.loginName);
+      setCertificate({ ...issued.certificate, loginName: issued.account?.loginName });
       setStage("certificate");
       document.getElementById("immigration-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
@@ -159,7 +204,7 @@ export function ImmigrationApplication() {
         <span className="eyebrow">Hopeful intake · Civic naturalization</span>
         <h2 id="immigration-workspace-title">Enter the covenant with clarity.</h2>
       </div>
-      <p>Your statements, contact field, and individual answers remain in this browser. Only successful certificate details—civic name, score, dates, serial, and standing—enter the public civic record.</p>
+      <p>Your statements and contact field remain in this browser. Answers travel only to the local civic service for in-memory scoring and are discarded; only successful certificate details—civic name, score, dates, serial, and standing—enter the civic record.</p>
     </div>
 
     <ol className="immigration-stepper" aria-label="Symbolic naturalization process">
@@ -203,8 +248,9 @@ export function ImmigrationApplication() {
           "This online pathway grants virtual symbolic recognition only; it is not legal nationality, physical residency, or completion of the constitutional Residency Pathway.",
         ].map((label, index) => <label key={label}><input type="checkbox" checked={acknowledgements[index]} onChange={(event) => updateAcknowledgement(index, event.target.checked)} /><span>{label}</span></label>)}
       </fieldset>
+      {assessmentError && <p className="immigration-error" role="alert">{assessmentError}</p>}
       <div className="immigration-declaration-actions">
-        <button className="immigration-primary-action" type="submit" disabled={!acknowledgements.every(Boolean)}>Begin the 100-question assessment</button>
+        <button className="immigration-primary-action" type="submit" disabled={assessmentStarting || !acknowledgements.every(Boolean)}>{assessmentStarting ? "Preparing a unique assessment…" : "Begin the 100-question assessment"}</button>
         <button className="immigration-preview-action" type="button" onClick={previewCertificate}>Preview certificate design</button>
       </div>
       <small className="immigration-preview-note">Local design preview only—no assessment result, citizenship standing, certificate number, or ledger record is issued.</small>
@@ -212,17 +258,23 @@ export function ImmigrationApplication() {
 
     {stage === "assessment" && <div className="immigration-assessment">
       <header id="assessment-heading">
-        <div><span>Civic Comprehension Assessment</span><h3>Questions {assessmentPage * PAGE_SIZE + 1}–{Math.min((assessmentPage + 1) * PAGE_SIZE, immigrationQuestions.length)}</h3></div>
+        <div><span>Civic Comprehension Assessment · unique attempt</span><h3>Questions {assessmentPage * PAGE_SIZE + 1}–{Math.min((assessmentPage + 1) * PAGE_SIZE, attempt?.questions.length || 101)}</h3></div>
         <div className="assessment-progress" aria-label={`${answeredCount} of 100 questions answered`}><b>{answeredCount}</b><span>of 100 answered</span><i><span style={{ width: `${answeredCount}%` }} /></i></div>
       </header>
-      <p className="assessment-note">Passing requires {ASSESSMENT_PASSING_SCORE} correct answers. The portal shows a local result first; the civic server independently verifies all 100 answers before issuing a record.</p>
+      <p className="assessment-note">Passing requires {ASSESSMENT_PASSING_SCORE} correct answers overall and at least {CATEGORY_PASSING_SCORE} of 10 in every civic domain. The server selected this attempt from 400 approved questions, randomized its choices, and keeps every correct answer out of the browser bundle.</p>
       <div className="assessment-question-list">
         {visibleQuestions.map((question) => <fieldset className="assessment-question" key={question.id}>
-          <legend><b>{String(question.id).padStart(3, "0")}</b><span>{question.prompt}</span><small>{question.domain}</small></legend>
-          <div>{question.options.map((option, optionIndex) => <label className={answers[question.id - 1] === optionIndex ? "is-selected" : ""} key={option}>
-            <input type="radio" name={`question-${question.id}`} checked={answers[question.id - 1] === optionIndex} onChange={() => answerQuestion(question.id, optionIndex)} />
-            <span>{option}</span>
-          </label>)}</div>
+          <legend><b>{String(question.ordinal).padStart(3, "0")}</b><span>{question.prompt}</span><small>{question.scored ? question.category : "A small unscored test of dangerous bridge-crossing knowledge"}</small></legend>
+          {question.scored && question.options
+            ? <div>{question.options.map((option, optionIndex) => <label className={answers[question.id] === optionIndex ? "is-selected" : ""} key={option}>
+              <input type="radio" name={`question-${question.id}`} checked={answers[question.id] === optionIndex} onChange={() => answerQuestion(question.id, optionIndex)} />
+              <span>{option}</span>
+            </label>)}</div>
+            : <div className="assessment-easter-response">
+              <label htmlFor="easter-response">Your answer (unscored)</label>
+              <input id="easter-response" value={easterResponse} onChange={(event) => setEasterResponse(event.target.value)} placeholder="A clarifying question may save you." />
+            </div>}
+          {question.source && <small className="assessment-source">Source: <Link href={question.source.href}>{question.source.section}</Link></small>}
         </fieldset>)}
       </div>
       {assessmentError && <p className="immigration-error" role="alert">{assessmentError}</p>}
@@ -231,16 +283,18 @@ export function ImmigrationApplication() {
         <span>Page {assessmentPage + 1} of {totalPages}</span>
         {assessmentPage < totalPages - 1
           ? <button type="button" onClick={() => changeAssessmentPage(1)}>Next ten</button>
-          : <button className="immigration-primary-action" type="button" onClick={completeAssessment}>Complete assessment</button>}
+          : <button className="immigration-primary-action" type="button" onClick={completeAssessment} disabled={assessmentScoring}>{assessmentScoring ? "Scoring without retaining answers…" : "Complete assessment"}</button>}
       </div>
     </div>}
 
-    {stage === "result" && score !== null && <div className={`immigration-result ${score >= ASSESSMENT_PASSING_SCORE ? "has-passed" : "has-not-passed"}`}>
-      <header><span>Assessment result</span><h3>{score} / 100</h3><p>{score >= ASSESSMENT_PASSING_SCORE ? "Civic comprehension standard met." : `The ${ASSESSMENT_PASSING_SCORE}% standard has not yet been met.`}</p></header>
-      <div className="domain-results">{domainResults.map((result) => <div key={result.domain}><span>{result.domain}</span><b>{result.correct}/{result.total}</b><i><span style={{ width: `${(result.correct / result.total) * 100}%` }} /></i></div>)}</div>
-      {score >= ASSESSMENT_PASSING_SCORE
+    {stage === "result" && assessmentResult && <div className={`immigration-result ${assessmentResult.passed ? "has-passed" : "has-not-passed"}`}>
+      <header><span>Assessment result</span><h3>{assessmentResult.score} / 100</h3><p>{assessmentResult.passed ? "Civic comprehension standard met across all ten domains." : `The ${ASSESSMENT_PASSING_SCORE}% overall and ${CATEGORY_PASSING_SCORE}/10 domain standards have not both been met.`}</p></header>
+      <div className="domain-results">{assessmentResult.categoryResults.map((result) => <div className={result.passed ? "has-passed-domain" : "has-not-passed-domain"} key={result.key}><span>{result.label}</span><b>{result.correct}/{result.total}</b><i><span style={{ width: `${(result.correct / result.total) * 100}%` }} /></i></div>)}</div>
+      <p className="assessment-privacy-result">Individual answers were scored in memory and discarded. The civic record retains only the result, domain totals, assessment version, and unique selection fingerprint.</p>
+      {assessmentResult.easterEgg.recognized && <p className="assessment-easter-result">Question 101 understood. The bridgekeeper permits a knowing nod. 😅</p>}
+      {assessmentResult.passed
         ? <button className="immigration-primary-action" type="button" onClick={() => setStage("oath")}>Proceed to the voluntary oath</button>
-        : <div className="result-actions"><button type="button" onClick={retakeAssessment}>Retake all 100 questions</button><Link href="/corpus/immigration-codex">Review the Immigration Codex</Link></div>}
+        : <div className="result-actions"><button type="button" onClick={retakeAssessment} disabled={assessmentStarting}>{assessmentStarting ? "Preparing a new selection…" : "Retake with a new question selection"}</button><Link href="/corpus/immigration-codex">Review the Immigration Codex</Link></div>}
     </div>}
 
     {stage === "oath" && <form className="immigration-oath" onSubmit={issueCertificate}>
@@ -257,7 +311,7 @@ export function ImmigrationApplication() {
       <div className={`immigration-certificate${certificate.preview ? " is-preview" : ""}`} aria-label={`${certificate.preview ? "Design preview of the certificate" : "Certificate of Virtual Symbolic Naturalization"} for ${certificate.civicName}`}>
         <div className="certificate-knot" aria-hidden="true"><i /><i /><i /><i /></div>
         {certificate.preview && <span className="certificate-preview-ribbon">Design preview · Not issued</span>}
-        <span className="certificate-eyebrow">The Utopian Society Corpus</span>
+        <span className="certificate-eyebrow">The Utopian Society</span>
         <h3>Certificate of Virtual<br />Symbolic Naturalization</h3>
         <p className="certificate-preamble">Let the living record acknowledge that</p>
         <strong>{certificate.civicName}</strong>
@@ -275,7 +329,13 @@ export function ImmigrationApplication() {
         <button className="immigration-primary-action" type="button" onClick={() => window.print()}>{certificate.preview ? "Print the design preview" : "Print or save the certificate"}</button>
         {certificate.preview && <button className="immigration-preview-action" type="button" onClick={() => setStage("declaration")}>Return to the application</button>}
         <Link href="/corpus/immigration-codex">Read the governing Codex</Link>
+        {!certificate.preview && <Link href="/login">Activate My Civic Profile</Link>}
       </div>
+      {!certificate.preview && certificate.loginName && <div className="certificate-account-handoff">
+        <span>Civic login prepared</span>
+        <strong>{certificate.loginName}</strong>
+        <p>Use this login name, the certificate number printed above, and a password of your choosing to activate the private Civic Profile.</p>
+      </div>}
       {!certificate.preview && <div className="ledger-preview">
         <header><span>Public Transparency Ledger · Recorded</span><h3>Civic standing now belongs to the living record.</h3></header>
         <div>

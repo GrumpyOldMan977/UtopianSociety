@@ -502,6 +502,6 @@ export default async function CorpusDocumentPage({ params }: { params: Promise<{
       {next ? <Link href={corpusPath(next.slug)}><small>Continue</small><strong>{next.title} →</strong></Link> : <Link href={ring.path}><small>Return</small><strong>{ring.label} →</strong></Link>}
     </nav>
 
-    <footer className="site-footer"><span>The Utopian Society Corpus</span><p>A living framework for ethical, civic, and human continuity.</p><Link href="/">Enter through the frontispiece ↑</Link></footer>
+    <footer className="site-footer"><span>The Utopian Society</span><p>A living framework for ethical, civic, and human continuity.</p><Link href="/">Enter through the frontispiece ↑</Link></footer>
   </main>;
 }

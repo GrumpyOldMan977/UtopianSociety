@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  CIVIC_LEDGER_API,
+  civicLedgerApi,
   type LedgerEntry,
   type PopulationSummary,
   type PublicCitizen,
@@ -35,10 +35,11 @@ export function TransparencyLedger() {
       if (loading) return;
       loading = true;
       try {
+        const api = civicLedgerApi();
         const [populationResponse, citizensResponse, ledgerResponse] = await Promise.all([
-          fetch(`${CIVIC_LEDGER_API}/v1/population`, { cache: "no-store", headers: { Accept: "application/json" }, signal: controller.signal }),
-          fetch(`${CIVIC_LEDGER_API}/v1/citizens?limit=100`, { cache: "no-store", headers: { Accept: "application/json" }, signal: controller.signal }),
-          fetch(`${CIVIC_LEDGER_API}/v1/ledger?limit=100`, { cache: "no-store", headers: { Accept: "application/json" }, signal: controller.signal }),
+          fetch(`${api}/v1/population`, { cache: "no-store", headers: { Accept: "application/json" }, signal: controller.signal }),
+          fetch(`${api}/v1/citizens?limit=100`, { cache: "no-store", headers: { Accept: "application/json" }, signal: controller.signal }),
+          fetch(`${api}/v1/ledger?limit=100`, { cache: "no-store", headers: { Accept: "application/json" }, signal: controller.signal }),
         ]);
         if (!populationResponse.ok || !citizensResponse.ok || !ledgerResponse.ok) {
           throw new Error("The public record is temporarily unavailable.");
@@ -80,6 +81,7 @@ export function TransparencyLedger() {
 
   if (error && !state) {
     return <section className="ledger-state" id="citizen-register" role="status">
+      <span id="population" className="ledger-fragment-anchor" aria-hidden="true" />
       <span id="ledger-stream" className="ledger-fragment-anchor" aria-hidden="true" />
       <span>Public record connection</span>
       <h2>The ledger is resting between requests.</h2>
@@ -89,6 +91,7 @@ export function TransparencyLedger() {
 
   if (!state) {
     return <section className="ledger-state" id="citizen-register" role="status" aria-live="polite">
+      <span id="population" className="ledger-fragment-anchor" aria-hidden="true" />
       <span id="ledger-stream" className="ledger-fragment-anchor" aria-hidden="true" />
       <span>Public record connection</span>
       <h2>Reading the living record…</h2>
@@ -98,7 +101,7 @@ export function TransparencyLedger() {
 
   return <>
     <section className="ledger-summary" aria-labelledby="ledger-summary-title">
-      <div className="ledger-population">
+      <div className="ledger-population" id="population">
         <span className="eyebrow">Active virtual symbolic population</span>
         <strong>{state.population.active.toLocaleString()}</strong>
         <h2 id="ledger-summary-title">{state.population.active === 1 ? "Citizen in standing" : "Citizens in standing"}</h2>

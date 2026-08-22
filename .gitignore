@@ -30,6 +30,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+.dev.vars
+**/.dev.vars
 
 # vercel
 .vercel
@@ -44,6 +46,14 @@ next-env.d.ts
 /deliverables/
 /examples/
 /scratch/
+/.local-services/
 /cloudflare/civic-ledger/.wrangler/
 /cloudflare/civic-ledger/cloudflare/
 /cloudflare/civic-ledger/outputs/
+/.codex-deploy-ticker/
+/.codex-local-logs/
+/.codex-runtime/
+/.wrangler-dry-run/
+/cloudflare/civic-ledger/.codex-runtime/
+/cloudflare/civic-ledger/.wrangler-dry-run/
+*.tsbuildinfo
