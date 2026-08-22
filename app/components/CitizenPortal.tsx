@@ -839,7 +839,7 @@ export function CitizenPortal() {
           </div>
           <p className="learning-evidence-rule">Source scores, reported percentiles, and provisional Ten-Q estimates remain separate and auditable. Scores synthesize all accepted observations. Adult and standardized evidence carries greater weight; childhood records provide longitudinal context and cannot erase stronger adult evidence. Disagreement widens the displayed range and lowers confidence rather than silently overwriting a result.</p>
           <LearningCourseSuggestions recommendations={snapshot.learning.recommendations} />
-          <section className="learning-test-controls" aria-labelledby="learning-reset-title">
+          {snapshot.localSimulation && <section className="learning-test-controls" aria-labelledby="learning-reset-title">
             <span className="eyebrow">Local testing control</span>
             <h3 id="learning-reset-title">Reset the derived Learning profile</h3>
             <p>This removes evaluations, observations, synthesized Ten-Q scores, recommendations, challenges, and profile versions. Encrypted source documents, reviewed OCR transcripts, evidence contracts, and Learning goals remain intact.</p>
@@ -864,7 +864,7 @@ export function CitizenPortal() {
             >
               {busy === "learning-reset" ? "Resetting…" : "Reset Learning Profile"}
             </button>
-          </section>
+          </section>}
         </article>
       </div>}
 

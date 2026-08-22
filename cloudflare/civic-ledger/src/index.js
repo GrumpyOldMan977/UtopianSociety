@@ -126,16 +126,31 @@ function requirePublicOrigin(request) {
 
 function requireLocalV3(request, env) {
   if (env.DEPLOYMENT_MODE !== "local-v3") {
-    throw new ClientError("This civic workflow is available only in the isolated local v3 environment.", 404, "local_v3_only");
+    throw new ClientError("This testing control is available only in the isolated local v3 environment.", 404, "local_v3_only");
   }
   requirePublicOrigin(request);
 }
 
-function localPageUrl(request, pathname) {
+function civicV3Enabled(env) {
+  return env.DEPLOYMENT_MODE === "local-v3" || env.DEPLOYMENT_MODE === "production";
+}
+
+function requireCivicV3(request, env) {
+  if (!civicV3Enabled(env)) {
+    throw new ClientError("The private civic portal is not enabled in this deployment.", 404, "civic_portal_unavailable");
+  }
+  requirePublicOrigin(request);
+}
+
+function isLocalV3(env) {
+  return env.DEPLOYMENT_MODE === "local-v3";
+}
+
+function civicPageUrl(request, env, pathname) {
   const origin = request.headers.get("Origin");
-  return isAllowedOrigin(origin) && origin?.startsWith("http://")
+  return isAllowedOrigin(origin)
     ? `${origin}${pathname}`
-    : `http://localhost:9877${pathname}`;
+    : `${env.PUBLIC_SITE_ORIGIN || "https://utopiansocietycorpus.org"}${pathname}`;
 }
 
 async function readJson(request, maxBytes = 20_000) {
@@ -715,7 +730,7 @@ async function recordFailedLogin(env, account, now) {
 }
 
 async function loginCivicAccount(request, env, input) {
-  requireLocalV3(request, env);
+  requireCivicV3(request, env);
   const loginName = cleanLoginName(input.loginName);
   const password = cleanPassword(input.password);
   const certificateNumber = cleanCertificateNumber(input.certificateNumber, false);
@@ -730,7 +745,7 @@ async function loginCivicAccount(request, env, input) {
 
   const now = new Date();
   if (account.locked_until && new Date(account.locked_until).getTime() > now.getTime()) {
-    throw new ClientError("This local account is briefly locked after repeated unsuccessful attempts.", 429, "login_locked");
+    throw new ClientError("This civic account is briefly locked after repeated unsuccessful attempts.", 429, "login_locked");
   }
 
   let activated = false;
@@ -787,7 +802,7 @@ async function loginCivicAccount(request, env, input) {
 }
 
 async function requireCivicSession(request, env) {
-  requireLocalV3(request, env);
+  requireCivicV3(request, env);
   const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") || "";
   if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
     throw new ClientError("Sign in to open this private civic record.", 401, "civic_session_required");
@@ -1163,7 +1178,7 @@ async function issueCertificate(request, env, input) {
     if (existing.civic_name.toLocaleLowerCase() !== civicName.toLocaleLowerCase()) {
       throw new ClientError("This issuance request is already associated with a different civic name.", 409, "issuance_key_reused");
     }
-    const account = env.DEPLOYMENT_MODE === "local-v3"
+    const account = civicV3Enabled(env)
       ? (await civicAccountByCivicId(env, existing.civic_id))
         || (await provisionPendingCivicAccount(env, existing.civic_id, existing.civic_name, existing.certificate_number, existing.joined_at))
       : null;
@@ -1222,7 +1237,7 @@ async function issueCertificate(request, env, input) {
     );
 
     const issuanceStatements = [prepared.statement, citizenStatement];
-    if (env.DEPLOYMENT_MODE === "local-v3") {
+    if (civicV3Enabled(env)) {
       issuanceStatements.push(env.DB.prepare(`
         INSERT INTO civic_accounts (
           account_id, civic_id, login_name, activation_certificate_number,
@@ -1244,7 +1259,7 @@ async function issueCertificate(request, env, input) {
 
     try {
       await env.DB.batch(issuanceStatements);
-      const account = env.DEPLOYMENT_MODE === "local-v3" ? await civicAccountByCivicId(env, civicId) : null;
+      const account = civicV3Enabled(env) ? await civicAccountByCivicId(env, civicId) : null;
       return {
         created: true,
         certificate: { serial, civicName, score, utopianDate, gregorianDate },
@@ -1255,7 +1270,7 @@ async function issueCertificate(request, env, input) {
     } catch (error) {
       const concurrent = await citizenByIssuanceKey(env, issuanceKey);
       if (concurrent) {
-        const account = env.DEPLOYMENT_MODE === "local-v3"
+        const account = civicV3Enabled(env)
           ? (await civicAccountByCivicId(env, concurrent.civic_id))
             || (await provisionPendingCivicAccount(env, concurrent.civic_id, concurrent.civic_name, concurrent.certificate_number, concurrent.joined_at))
           : null;
@@ -1948,8 +1963,8 @@ async function portalSnapshot(env, civicId) {
     : synthesizeLearningProfile(qScores.results || []);
 
   return {
-    localSimulation: true,
-    persistence: "isolated local D1 and encrypted local R2",
+    localSimulation: isLocalV3(env),
+    persistence: isLocalV3(env) ? "isolated local D1 and encrypted local R2" : "production D1 and encrypted R2",
     aiAllowance,
     profile: {
       civicId: profile.civic_id,
@@ -2112,9 +2127,9 @@ async function acceptContributionAssignment(request, env, input) {
     occurredAt: now.toISOString(),
     utopianDate: formatUtopianDate(now),
     gregorianDate: formatGregorianDate(now),
-    sourceLabel: "v3 local civic portal · Contribution pathway",
-    sourceUrl: localPageUrl(request, "/portal"),
-    metadata: { assignmentId, positionId, stage: "accepted", localSimulation: true },
+    sourceLabel: "Civic Portal · Contribution pathway",
+    sourceUrl: civicPageUrl(request, env, "/portal"),
+    metadata: { assignmentId, positionId, stage: "accepted", localSimulation: isLocalV3(env) },
   });
   await env.DB.batch([
     env.DB.prepare(`
@@ -2170,9 +2185,9 @@ async function submitContributionAssignment(request, env, assignmentId, input) {
     occurredAt: now.toISOString(),
     utopianDate: formatUtopianDate(now),
     gregorianDate: formatGregorianDate(now),
-    sourceLabel: "v3 local civic portal · Contribution pathway",
-    sourceUrl: localPageUrl(request, "/portal"),
-    metadata: { assignmentId, positionId: assignment.position_id, stage: "submitted", localSimulation: true },
+    sourceLabel: "Civic Portal · Contribution pathway",
+    sourceUrl: civicPageUrl(request, env, "/portal"),
+    metadata: { assignmentId, positionId: assignment.position_id, stage: "submitted", localSimulation: isLocalV3(env) },
   });
   await env.DB.batch([
     env.DB.prepare(`
@@ -3225,7 +3240,7 @@ function publicLearningObservation(row) {
 }
 
 async function createLearningEvidenceContract(request, env, input) {
-  requireLocalV3(request, env);
+  requireCivicV3(request, env);
   const session = await requireCivicSession(request, env);
   const documentId = cleanText(input.documentId, 100);
   const document = await env.DB.prepare(`
@@ -3361,7 +3376,7 @@ async function createLearningEvidenceContract(request, env, input) {
 }
 
 async function createLearningChallenge(request, env, input) {
-  requireLocalV3(request, env);
+  requireCivicV3(request, env);
   const session = await requireCivicSession(request, env);
   const observationId = cleanText(input.observationId, 100);
   const challengeType = [
@@ -3415,13 +3430,13 @@ async function createLearningChallenge(request, env, input) {
 }
 
 async function getPrivateIdentity(request, env) {
-  requireLocalV3(request, env);
+  requireCivicV3(request, env);
   const session = await requireCivicSession(request, env);
   return privateIdentityForCitizen(env, session.civic_id, true);
 }
 
 async function savePrivateIdentity(request, env, input) {
-  requireLocalV3(request, env);
+  requireCivicV3(request, env);
   const session = await requireCivicSession(request, env);
   await requireCurrentCivicPassword(env, session.civic_id, input.currentPassword);
   const legalName = cleanText(input.legalName, 240);
@@ -3988,7 +4003,7 @@ async function resetLearningProfile(request, env, input) {
 }
 
 async function recordLearningEvaluation(request, env, input) {
-  requireLocalV3(request, env);
+  requireCivicV3(request, env);
   const session = await requireCivicSession(request, env);
   const summary = cleanText(input.summary, 4000);
   const goalText = cleanText(input.goalText || "", 800, false);
@@ -4406,9 +4421,9 @@ async function reportHarmonyHarm(request, env, input) {
     occurredAt: now.toISOString(),
     utopianDate: formatUtopianDate(now),
     gregorianDate: formatGregorianDate(now),
-    sourceLabel: "v3 local civic portal · Harmony intake",
-    sourceUrl: localPageUrl(request, "/portal"),
-    metadata: { harmId, privacyLevel: "participants", localSimulation: true },
+    sourceLabel: "Civic Portal · Harmony intake",
+    sourceUrl: civicPageUrl(request, env, "/portal"),
+    metadata: { harmId, privacyLevel: "participants", localSimulation: isLocalV3(env) },
   });
   await env.DB.batch([
     env.DB.prepare(`
@@ -4470,8 +4485,8 @@ async function affirmContributionAssignment(request, env, assignmentId, input) {
     occurredAt: now.toISOString(),
     utopianDate: formatUtopianDate(now),
     gregorianDate: formatGregorianDate(now),
-    sourceLabel: "v3 local civic portal · Contribution and Affirmation",
-    sourceUrl: localPageUrl(request, "/portal"),
+    sourceLabel: "Civic Portal · Contribution and Affirmation",
+    sourceUrl: civicPageUrl(request, env, "/portal"),
     metadata: {
       assignmentId,
       positionId: assignment.position_id,
@@ -4480,7 +4495,7 @@ async function affirmContributionAssignment(request, env, assignmentId, input) {
       sepMultiplier: Number(assignment.sep_multiplier_millis) / 1000,
       creditedCcu: ccuFromMicros(amountMicros),
       balanceAfterCcu: ccuFromMicros(balanceAfterMicros),
-      localSimulation: true,
+      localSimulation: isLocalV3(env),
     },
   });
   await env.DB.batch([
@@ -4883,7 +4898,7 @@ async function wordpressHandoffManifest(request, env) {
   return {
     manifestVersion: "wordpress-reviewed-handoff-v1",
     generatedAt: new Date().toISOString(),
-    localSimulation: true,
+    localSimulation: isLocalV3(env),
     productionFrozen: env.PUBLIC_SITE_FROZEN === "true",
     remoteWritesEnabled: false,
     reviewRequired: true,
@@ -4895,7 +4910,7 @@ async function wordpressHandoffManifest(request, env) {
 }
 
 async function listTickerAnnouncements(request, env, url) {
-  requireLocalV3(request, env);
+  await requireEditorialAuthority(request, env);
   const includeAll = url.searchParams.get("all") === "1";
   const now = new Date().toISOString();
   const result = includeAll
@@ -4907,7 +4922,7 @@ async function listTickerAnnouncements(request, env, url) {
           AND (ends_at IS NULL OR ends_at > ?1)
         ORDER BY priority DESC, created_at ASC
       `).bind(now).all();
-  return { announcements: (result.results || []).map(publicAnnouncement), localSimulation: true };
+  return { announcements: (result.results || []).map(publicAnnouncement), localSimulation: isLocalV3(env) };
 }
 
 async function createTickerAnnouncement(request, env, input) {
@@ -4927,10 +4942,10 @@ async function createTickerAnnouncement(request, env, input) {
   const now = new Date().toISOString();
   const announcementId = `UTA-${crypto.randomUUID()}`;
   const event = await prepareEntry(env, {
-    eventKey: `v3-local:${announcementId}:created`,
+    eventKey: `civic-portal:${announcementId}:created`,
     eventType: "ticker_announcement_created",
     category: "editorial",
-    title: "Local civic-wire notice prepared",
+    title: "Civic-wire notice prepared",
     summary: label,
     actorName: createdBy,
     subjectName: "The Utopian Society public civic wire",
@@ -4938,9 +4953,9 @@ async function createTickerAnnouncement(request, env, input) {
     occurredAt: now,
     utopianDate: formatUtopianDate(new Date(now)),
     gregorianDate: formatGregorianDate(new Date(now)),
-    sourceLabel: "v3 local editorial studio · Civic wire",
-    sourceUrl: localPageUrl(request, "/editorial"),
-    metadata: { announcementId, status, startsAt, endsAt, priority, localSimulation: true },
+    sourceLabel: "Editorial Studio · Civic wire",
+    sourceUrl: civicPageUrl(request, env, "/editorial"),
+    metadata: { announcementId, status, startsAt, endsAt, priority, localSimulation: isLocalV3(env) },
   });
   await env.DB.batch([
     env.DB.prepare(`
@@ -4975,20 +4990,20 @@ async function createEditorialDraft(request, env, input) {
   const now = new Date();
   const publicationId = `UTP-${crypto.randomUUID()}`;
   const event = await prepareEntry(env, {
-    eventKey: `v3-local:${publicationId}:drafted`,
+    eventKey: `civic-portal:${publicationId}:drafted`,
     eventType: "editorial_draft_created",
     category: "editorial",
-    title: `Local draft prepared: ${title}`,
-    summary: excerpt || `A local ${type} draft was prepared for review.`,
+    title: `Editorial draft prepared: ${title}`,
+    summary: excerpt || `A private ${type} draft was prepared for review.`,
     actorName: authorName,
     subjectName: title,
     subjectRef: publicationId,
     occurredAt: now.toISOString(),
     utopianDate: formatUtopianDate(now),
     gregorianDate: formatGregorianDate(now),
-    sourceLabel: "v3 local editorial studio · Working record",
-    sourceUrl: localPageUrl(request, "/editorial"),
-    metadata: { publicationId, slug, type, status: "draft", localSimulation: true, remoteWrites: false },
+    sourceLabel: "Editorial Studio · Working record",
+    sourceUrl: civicPageUrl(request, env, "/editorial"),
+    metadata: { publicationId, slug, type, status: "draft", localSimulation: isLocalV3(env), remoteWrites: false },
   });
   try {
     await env.DB.batch([
@@ -5082,9 +5097,9 @@ async function importWordpressInventory(request, env, input) {
       occurredAt: now,
       utopianDate: formatUtopianDate(new Date(now)),
       gregorianDate: formatGregorianDate(new Date(now)),
-      sourceLabel: "v3 local editorial bridge · WordPress inventory",
-      sourceUrl: localPageUrl(request, "/editorial"),
-      metadata: { publications: input.posts.length, latestModified, remoteWrites: false, localSimulation: true },
+      sourceLabel: "Editorial bridge · WordPress inventory",
+      sourceUrl: civicPageUrl(request, env, "/editorial"),
+      metadata: { publications: input.posts.length, latestModified, remoteWrites: false, localSimulation: isLocalV3(env) },
     });
     statements.push(event.statement);
   }
@@ -5143,7 +5158,7 @@ async function route(request, env) {
   }
   if (request.method === "GET" && path === "/v3/contribution/positions") {
     await requireCivicSession(request, env);
-    return json(request, { positions: await contributionPositions(env), localSimulation: true }, { headers: { "Cache-Control": "no-store" } });
+    return json(request, { positions: await contributionPositions(env), localSimulation: isLocalV3(env) }, { headers: { "Cache-Control": "no-store" } });
   }
   if (request.method === "GET" && path === "/v3/editorial/status") {
     return json(request, await editorialStatus(request, env), { headers: { "Cache-Control": "no-store" } });

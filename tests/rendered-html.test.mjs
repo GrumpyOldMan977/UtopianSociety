@@ -207,7 +207,8 @@ test("server-renders imported essays in the new local manuscript template", asyn
   assert.match(html, /The Feral Child/);
   assert.match(html, /West Ring/);
   assert.match(html, /Corpus provenance/);
-  assert.match(html, /\/images\/posts\//);
+  assert.match(html, /post-frontispiece-art/);
+  assert.match(html, /Feral_Child\.png/);
   assert.match(html, /Return to Blogs &amp; Essays/);
   assert.match(html, /View the source edition/);
 });

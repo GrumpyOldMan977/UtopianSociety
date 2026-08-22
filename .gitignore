@@ -50,6 +50,7 @@ next-env.d.ts
 /cloudflare/civic-ledger/.wrangler/
 /cloudflare/civic-ledger/cloudflare/
 /cloudflare/civic-ledger/outputs/
+/cloudflare/civic-ledger/deliverables/
 /.codex-deploy-ticker/
 /.codex-local-logs/
 /.codex-runtime/

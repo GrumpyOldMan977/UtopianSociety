@@ -39,7 +39,7 @@ export function EditorialStudio() {
       try { setAnalytics(await getEditorialAnalytics(30)); } catch { setAnalytics(null); }
       setError("");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The local editorial record is unavailable.");
+      setError(reason instanceof Error ? reason.message : "The editorial record is unavailable.");
     }
   }, []);
 
@@ -65,7 +65,7 @@ export function EditorialStudio() {
         createdBy: civicAuthor,
       });
       setAnnouncement({ label: "", href: "", status: "draft", startsAt: "", endsAt: "", priority: 10 });
-      setNotice("Ticker notice saved to the isolated local civic record.");
+      setNotice("Ticker notice saved to the private editorial record.");
       await refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The ticker notice could not be saved.");
@@ -87,7 +87,7 @@ export function EditorialStudio() {
         authorName: civicAuthor,
       });
       setDraft({ title: "", slug: "", excerpt: "", contentMarkdown: "", featuredImage: "" });
-      setNotice("Blog draft saved locally. Nothing was sent to WordPress or production.");
+      setNotice("Blog draft saved to the private editorial record. Nothing was sent to WordPress.");
       await refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The local draft could not be saved.");
@@ -111,7 +111,7 @@ export function EditorialStudio() {
       link.click();
       link.remove();
       URL.revokeObjectURL(href);
-      setNotice(`Reviewed handoff manifest prepared locally for ${manifest.count} draft${manifest.count === 1 ? "" : "s"}. No WordPress write occurred.`);
+      setNotice(`Reviewed handoff manifest prepared for ${manifest.count} draft${manifest.count === 1 ? "" : "s"}. No WordPress write occurred.`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The local handoff manifest could not be prepared.");
     } finally {
@@ -159,28 +159,28 @@ export function EditorialStudio() {
 
     <section className="editorial-vitals" aria-label="Editorial continuity summary">
       <article><span>WordPress archive</span><strong>{importedCount}</strong><small>publications inventoried</small></article>
-      <article><span>Local working record</span><strong>{draftCount}</strong><small>drafts awaiting review</small></article>
-      <article><span>Local civic wire</span><strong>{activeTickerCount}</strong><small>active local notices</small></article>
+      <article><span>Private working record</span><strong>{draftCount}</strong><small>drafts awaiting review</small></article>
+      <article><span>Civic wire</span><strong>{activeTickerCount}</strong><small>active notices</small></article>
       <article><span>30-day public reading</span><strong>{analytics?.totalViews.toLocaleString("en-US") ?? "—"}</strong><small>aggregate first-party page views</small></article>
     </section>
 
     <section className="editorial-workbench">
       <form onSubmit={saveDraft} className="editorial-sheet">
-        <header><span>01 · Working record</span><h2>Compose a local blog draft.</h2><p>The canonical public copy will eventually be handed to WordPress so the web and Android publishing tools can remain useful.</p></header>
+        <header><span>01 · Working record</span><h2>Compose a private blog draft.</h2><p>The canonical public copy can be handed to WordPress after review so the web and Android publishing tools remain useful.</p></header>
         <label>Title<input required maxLength={240} value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value, slug: current.slug || slugify(event.target.value) }))} /></label>
         <label>Slug<input required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength={180} value={draft.slug} onChange={(event) => setDraft((current) => ({ ...current, slug: slugify(event.target.value) }))} /></label>
         <label>Excerpt<textarea required maxLength={600} rows={3} value={draft.excerpt} onChange={(event) => setDraft((current) => ({ ...current, excerpt: event.target.value }))} /></label>
         <label>Body · Markdown<textarea required maxLength={60000} rows={13} value={draft.contentMarkdown} onChange={(event) => setDraft((current) => ({ ...current, contentMarkdown: event.target.value }))} /></label>
         <label>Featured image URL · optional<input type="url" value={draft.featuredImage} onChange={(event) => setDraft((current) => ({ ...current, featuredImage: event.target.value }))} /></label>
-        <footer><span>Author · {civicAuthor}</span><button disabled={busy === "draft"}>{busy === "draft" ? "Saving…" : "Save local draft"}</button></footer>
+        <footer><span>Author · {civicAuthor}</span><button disabled={busy === "draft"}>{busy === "draft" ? "Saving…" : "Save private draft"}</button></footer>
       </form>
 
       <form onSubmit={saveAnnouncement} className="editorial-sheet ticker-sheet">
-        <header><span>02 · Civic wire</span><h2>Prepare a ticker notice.</h2><p>Draft, schedule, or activate a notice on localhost. Production remains unchanged until the freeze ends and a reviewed release is authorized.</p></header>
+        <header><span>02 · Civic wire</span><h2>Prepare a ticker notice.</h2><p>Draft, schedule, or activate a public notice from this founder-authorized studio.</p></header>
         <label>Notice<input required maxLength={240} value={announcement.label} onChange={(event) => setAnnouncement((current) => ({ ...current, label: event.target.value }))} /></label>
         <label>Destination · optional<input type="url" value={announcement.href} onChange={(event) => setAnnouncement((current) => ({ ...current, href: event.target.value }))} /></label>
         <div className="editorial-field-row">
-          <label>Status<select value={announcement.status} onChange={(event) => setAnnouncement((current) => ({ ...current, status: event.target.value }))}><option value="draft">Draft</option><option value="scheduled">Scheduled</option><option value="active">Active locally</option></select></label>
+          <label>Status<select value={announcement.status} onChange={(event) => setAnnouncement((current) => ({ ...current, status: event.target.value }))}><option value="draft">Draft</option><option value="scheduled">Scheduled</option><option value="active">Active</option></select></label>
           <label>Priority<input type="number" min={-100} max={100} value={announcement.priority} onChange={(event) => setAnnouncement((current) => ({ ...current, priority: Number(event.target.value) }))} /></label>
         </div>
         <div className="editorial-field-row">
@@ -191,7 +191,7 @@ export function EditorialStudio() {
 
         <div className="editorial-recent">
           <span>Recent notices</span>
-          {status?.recentAnnouncements.length ? status.recentAnnouncements.map((item) => <article key={item.announcementId}><strong>{item.label}</strong><small>{item.status} · priority {item.priority}</small></article>) : <p>No local ticker notices have been drafted.</p>}
+          {status?.recentAnnouncements.length ? status.recentAnnouncements.map((item) => <article key={item.announcementId}><strong>{item.label}</strong><small>{item.status} · priority {item.priority}</small></article>) : <p>No ticker notices have been drafted.</p>}
         </div>
       </form>
     </section>
@@ -218,7 +218,7 @@ export function EditorialStudio() {
     </section>
 
     <section className="editorial-publications" aria-label="Recent publication inventory">
-      <header><span>Local publication index</span><h2>The archive and the unfinished page.</h2></header>
+      <header><span>Private publication index</span><h2>The archive and the unfinished page.</h2></header>
       <div>{status?.recentPublications.map((item) => <article key={item.publicationId}><span>{item.status} · {item.type}</span><strong>{item.title}</strong><small>{item.utopianDate || "Utopian date assigned at publication"}</small></article>)}</div>
     </section>
   </>;

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { loginLocalCivicAccount } from "../lib/civic-ledger";
+import { loginCivicAccount } from "../lib/civic-ledger";
 
 const CERTIFICATE_PATTERN = /^USV-\d{4}-[A-F0-9]{12}$/;
 
@@ -35,7 +35,7 @@ export function CivicLogin() {
     setBusy(true);
     setError("");
     try {
-      const result = await loginLocalCivicAccount({
+      const result = await loginCivicAccount({
         loginName: loginName.trim(),
         password,
         certificateNumber: firstAccess ? certificateNumber : undefined,
@@ -58,7 +58,7 @@ export function CivicLogin() {
       <p>A Civic Profile gathers only the records belonging to the signed-in citizen: standing, learning, contribution, Common Credit, residence, care pathways, requests, and private Harmony matters.</p>
     </div>
     <form onSubmit={submit}>
-      <span className="eyebrow">Local v3 access</span>
+      <span className="eyebrow">Private civic access</span>
       <label htmlFor="civic-login-name">Civic login name</label>
       <input id="civic-login-name" value={loginName} onChange={(event) => setLoginName(event.target.value)} autoComplete="username" required />
       <label htmlFor="civic-login-password">Password</label>
@@ -83,7 +83,7 @@ export function CivicLogin() {
       </>}
       {error && <p className="portal-message is-error" role="alert">{error}</p>}
       <button type="submit" disabled={busy || !loginName.trim() || password.length < 10 || (firstAccess && !certificateValid)}>{busy ? "Verifying…" : firstAccess ? "Activate My Civic Profile" : "Open My Civic Profile"}</button>
-      <small>After activation, clear “This is my first sign-in” and use only your civic login name and password. This gateway and its records remain isolated to local v3 development.</small>
+      <small>After activation, clear “This is my first sign-in” and use only your civic login name and password. Your private records are available only through your authenticated civic session.</small>
     </form>
   </section>;
 }

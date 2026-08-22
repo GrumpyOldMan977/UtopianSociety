@@ -297,7 +297,7 @@ export type LearningObservation = {
 };
 
 export type CivicPortalSnapshot = {
-  localSimulation: true;
+  localSimulation: boolean;
   persistence: string;
   aiAllowance: {
     provider: string;
@@ -574,7 +574,7 @@ export type SynchronizedPublication = EditorialPublication;
 export type WordpressHandoffManifest = {
   manifestVersion: "wordpress-reviewed-handoff-v1";
   generatedAt: string;
-  localSimulation: true;
+  localSimulation: boolean;
   productionFrozen: boolean;
   remoteWritesEnabled: false;
   reviewRequired: true;
@@ -614,7 +614,7 @@ async function civicRequest<T>(path: string, init?: RequestInit, authenticated =
     cache: "no-store",
   });
   const result = await response.json() as T & { error?: string };
-  if (!response.ok) throw new Error(result.error || "The local civic service could not complete this request.");
+  if (!response.ok) throw new Error(result.error || "The civic service could not complete this request.");
   return result;
 }
 
@@ -637,7 +637,7 @@ async function civicBinary(path: string) {
   return response.blob();
 }
 
-export function loginLocalCivicAccount(input: { loginName: string; password: string; certificateNumber?: string }) {
+export function loginCivicAccount(input: { loginName: string; password: string; certificateNumber?: string }) {
   return civicRequest<CivicLoginResult>("/v3/auth/login", {
     method: "POST",
     body: JSON.stringify(input),
