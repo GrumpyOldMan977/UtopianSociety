@@ -124,3 +124,26 @@ test("profile photographs are framed in authenticated profile settings before up
   assert.match(styles, /\.profile-photo-generate\.is-allowance-exhausted/);
   assert.match(styles, /profile-photo-generation-control\[data-tooltip\]:hover/);
 });
+
+test("Transparency Ledger release automation is Cloudflare-native and auditable", async () => {
+  const worker = await source("cloudflare/civic-ledger/src/index.js");
+  const synchronization = section(worker, "async function markReleaseInboxSync", "async function listLedger");
+  const scheduled = section(worker, "async scheduled", "export default civicLedgerWorker");
+  const migration = await source("cloudflare/civic-ledger/migrations/0019_v4_cloudflare_release_inbox.sql");
+  const enqueue = await source("scripts/register-ledger-release.mjs");
+
+  assert.match(synchronization, /env\.CIVIC_FILES\.list\(/);
+  assert.match(synchronization, /env\.CIVIC_FILES\.get\(object\.key\)/);
+  assert.match(synchronization, /registerRelease\(env, manifest\)/);
+  assert.match(synchronization, /env\.CIVIC_FILES\.put\(archiveKey/);
+  assert.match(synchronization, /env\.CIVIC_FILES\.delete\(object\.key\)/);
+  assert.match(synchronization, /INSERT INTO editorial_sync_state/);
+  assert.match(synchronization, /source_key.*civic-release-inbox/s);
+  assert.doesNotMatch(synchronization, /api\.github\.com|raw\.githubusercontent\.com|fetch\(/);
+  assert.match(scheduled, /syncReleaseInbox\(env\)/);
+  assert.doesNotMatch(scheduled, /syncPublicReleaseManifests/);
+  assert.match(migration, /'civic-release-inbox'/);
+  assert.match(enqueue, /wrangler", "r2", "object", "put"/);
+  assert.match(enqueue, /ledger\/releases\/inbox/);
+  assert.doesNotMatch(enqueue, /LEDGER_ADMIN_KEY|api\.github\.com|githubusercontent/);
+});

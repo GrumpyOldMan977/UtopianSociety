@@ -37,6 +37,7 @@ const PUBLIC_ORIGINS = new Set([
 ]);
 
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 const ASSESSMENT_VERSION_V1 = "immigration-v1";
 const ASSESSMENT_QUESTION_COUNT = 100;
 const ASSESSMENT_PASSING_SCORE = 90;
@@ -58,6 +59,11 @@ const AI_PREFLIGHT_ESTIMATE = 650;
 // plus 181.82 neurons per input MP. The browser sends a 496x496 crop.
 const AI_PORTRAIT_ESTIMATE = 1_409;
 const PORTRAIT_INPUT_MAX_BYTES = 2 * 1024 * 1024;
+const RELEASE_INBOX_PREFIX = "ledger/releases/inbox/";
+const RELEASE_ARCHIVE_PREFIX = "ledger/releases/archive/";
+const RELEASE_MANIFEST_MAX_BYTES = 128 * 1024;
+const RELEASE_INBOX_PAGE_SIZE = 100;
+const RELEASE_INBOX_MAX_OBJECTS = 500;
 const PORTRAIT_PROMPT = `Transform input image 0 into a dignified Renaissance anatomical-study colored-pencil portrait on warm ochre vellum. Preserve the person's facial identity, apparent age, skin tone, hair, glasses, beard, expression, and head angle with high fidelity. Use fine graphite and ink hatching, subtle hand-drawn contours, natural facial proportions, muted green, teal, and antique-gold color accents, and gentle parchment texture inspired by Leonardo da Vinci's manuscript studies. Keep the face centered and fully visible inside a circular-avatar-safe square composition. Do not add text, labels, signatures, symbols, insignia, extra people, extra limbs, hats, jewelry, uniforms, costumes, or invented objects. The result must be a polished civic portrait, not a photographic filter, embossing effect, relief, negative, or photocopy.`;
 const UTOPIAN_EPOCH_UTC = Date.UTC(2026, 2, 20);
 const DAY_IN_MS = 86_400_000;
@@ -1112,31 +1118,147 @@ async function registerRelease(env, input) {
   return { releaseKey, entries };
 }
 
-async function syncPublicReleaseManifests(env) {
-  const listResponse = await fetch("https://api.github.com/repos/GrumpyOldMan977/UtopianSociety/contents/ledger/releases?ref=main", {
-    headers: {
-      Accept: "application/vnd.github+json",
-      "User-Agent": "Utopian-Society-Civic-Ledger",
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
-  });
-  if (!listResponse.ok) throw new Error(`Release manifest listing failed with HTTP ${listResponse.status}.`);
-  const files = await listResponse.json();
-  if (!Array.isArray(files)) throw new Error("Release manifest listing was not an array.");
+async function markReleaseInboxSync(env, values) {
+  await env.DB.prepare(`
+    INSERT INTO editorial_sync_state (
+      source_key, cursor_value, last_success_at, last_attempt_at, status, message
+    ) VALUES ('civic-release-inbox', ?2, ?3, ?1, ?4, ?5)
+    ON CONFLICT(source_key) DO UPDATE SET
+      cursor_value = COALESCE(excluded.cursor_value, editorial_sync_state.cursor_value),
+      last_success_at = COALESCE(excluded.last_success_at, editorial_sync_state.last_success_at),
+      last_attempt_at = excluded.last_attempt_at,
+      status = excluded.status,
+      message = excluded.message
+  `).bind(
+    values.attemptedAt,
+    values.cursor || null,
+    values.succeededAt || null,
+    values.status,
+    values.message,
+  ).run();
+}
 
-  let created = 0;
-  let existing = 0;
-  for (const file of files.filter((item) => item?.type === "file" && item.name?.endsWith(".json"))) {
-    const manifestResponse = await fetch(file.download_url, {
-      headers: { Accept: "application/json", "User-Agent": "Utopian-Society-Civic-Ledger" },
+async function listReleaseInboxObjects(env) {
+  const objects = [];
+  let cursor;
+  do {
+    const page = await env.CIVIC_FILES.list({
+      prefix: RELEASE_INBOX_PREFIX,
+      cursor,
+      limit: RELEASE_INBOX_PAGE_SIZE,
     });
-    if (!manifestResponse.ok) throw new Error(`Release manifest ${file.name} failed with HTTP ${manifestResponse.status}.`);
-    const result = await registerRelease(env, await manifestResponse.json());
-    created += result.entries.filter((entry) => entry.created).length;
-    existing += result.entries.filter((entry) => !entry.created).length;
+    objects.push(...page.objects);
+    if (objects.length > RELEASE_INBOX_MAX_OBJECTS) {
+      throw new Error(`The civic release inbox exceeds its ${RELEASE_INBOX_MAX_OBJECTS}-manifest safety limit.`);
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return objects.sort((left, right) => left.key.localeCompare(right.key));
+}
+
+async function syncReleaseInbox(env) {
+  const attemptedAt = new Date().toISOString();
+  await markReleaseInboxSync(env, {
+    attemptedAt,
+    status: "running",
+    message: "Reading pending civic release manifests from the Cloudflare R2 inbox.",
+  });
+
+  try {
+    const objects = await listReleaseInboxObjects(env);
+    let created = 0;
+    let existing = 0;
+    let archived = 0;
+    let lastArchivedKey = null;
+    const failures = [];
+
+    for (const object of objects) {
+      try {
+        if (!object.key.endsWith(".json")) {
+          throw new Error("Only JSON release manifests are accepted in the civic release inbox.");
+        }
+        if (object.size < 1 || object.size > RELEASE_MANIFEST_MAX_BYTES) {
+          throw new Error(`Manifest size must be between 1 and ${RELEASE_MANIFEST_MAX_BYTES} bytes.`);
+        }
+        const stored = await env.CIVIC_FILES.get(object.key);
+        if (!stored) throw new Error("Manifest disappeared before it could be read.");
+        const bytes = await stored.arrayBuffer();
+        if (bytes.byteLength < 1 || bytes.byteLength > RELEASE_MANIFEST_MAX_BYTES) {
+          throw new Error(`Manifest size must be between 1 and ${RELEASE_MANIFEST_MAX_BYTES} bytes.`);
+        }
+
+        let manifest;
+        try {
+          manifest = JSON.parse(decoder.decode(bytes));
+        } catch {
+          throw new Error("Manifest is not valid JSON.");
+        }
+        const result = await registerRelease(env, manifest);
+        created += result.entries.filter((entry) => entry.created).length;
+        existing += result.entries.filter((entry) => !entry.created).length;
+
+        const suffix = object.key.slice(RELEASE_INBOX_PREFIX.length);
+        const archiveKey = `${RELEASE_ARCHIVE_PREFIX}${suffix}`;
+        const synchronizedAt = new Date().toISOString();
+        await env.CIVIC_FILES.put(archiveKey, bytes, {
+          httpMetadata: { contentType: "application/json; charset=utf-8" },
+          customMetadata: {
+            releaseKey: result.releaseKey,
+            synchronizedAt,
+          },
+        });
+        await env.CIVIC_FILES.delete(object.key);
+        archived += 1;
+        lastArchivedKey = archiveKey;
+      } catch (error) {
+        failures.push({
+          key: object.key,
+          error: boundedGeneratedText(String(error?.message || error), 300, "Release manifest synchronization failed."),
+        });
+      }
+    }
+
+    if (failures.length) {
+      const message = `${failures.length} release manifest${failures.length === 1 ? " remains" : "s remain"} in the R2 inbox after validation or registration failed.`;
+      await markReleaseInboxSync(env, {
+        attemptedAt,
+        cursor: lastArchivedKey,
+        status: "failed",
+        message,
+      });
+      console.error(JSON.stringify({ level: "error", message: "civic-release-inbox-failed", failures }));
+      throw new Error(message);
+    }
+
+    const synchronizedAt = new Date().toISOString();
+    const message = objects.length
+      ? `${archived} Cloudflare R2 release manifest${archived === 1 ? "" : "s"} synchronized and archived.`
+      : "Cloudflare R2 release inbox checked; no pending manifests.";
+    await markReleaseInboxSync(env, {
+      attemptedAt,
+      cursor: lastArchivedKey,
+      succeededAt: synchronizedAt,
+      status: "succeeded",
+      message,
+    });
+    console.log(JSON.stringify({
+      level: "info",
+      message: "civic-release-inbox-synchronized",
+      pending: objects.length,
+      archived,
+      created,
+      existing,
+    }));
+    return { pending: objects.length, archived, created, existing, synchronizedAt };
+  } catch (error) {
+    const currentMessage = boundedGeneratedText(String(error?.message || error), 500, "Release inbox synchronization failed.");
+    await markReleaseInboxSync(env, {
+      attemptedAt,
+      status: "failed",
+      message: currentMessage,
+    });
+    throw error;
   }
-  console.log(JSON.stringify({ level: "info", message: "public-release-manifests-synchronized", created, existing }));
-  return { created, existing };
 }
 
 async function listLedger(request, env, url) {
@@ -5738,7 +5860,7 @@ const civicLedgerWorker = {
   async scheduled(_controller, env, ctx) {
     ctx.waitUntil((async () => {
       const results = await Promise.allSettled([
-        syncPublicReleaseManifests(env),
+        syncReleaseInbox(env),
         syncWordpressArchive(env),
       ]);
       for (const result of results) {
