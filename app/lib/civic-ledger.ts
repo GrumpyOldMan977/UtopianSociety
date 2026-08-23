@@ -710,6 +710,28 @@ export function uploadProfileAvatar(file: File) {
   );
 }
 
+export async function generateProfilePortrait(file: File) {
+  const sessionToken = civicSessionToken();
+  if (!sessionToken) throw new Error("Sign in before generating a profile portrait.");
+  const body = new FormData();
+  body.append("file", file);
+  const response = await fetch("/api/profile/portrait", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${sessionToken}` },
+    body,
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(result.error || "The Renaissance portrait could not be generated.");
+  }
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.startsWith("image/")) {
+    throw new Error("The portrait generator returned an unreadable response.");
+  }
+  return response.blob();
+}
+
 export function getProfileAvatar() {
   return civicBinary("/v3/profile/avatar");
 }
