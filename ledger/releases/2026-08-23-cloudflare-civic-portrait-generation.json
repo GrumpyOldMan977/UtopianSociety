@@ -1,0 +1,42 @@
+{
+  "releaseKey": "site-release:2026-08-23:cloudflare-civic-portrait-generation",
+  "entries": [
+    {
+      "eventKey": "site-release:aac8bf5:cloudflare-civic-portrait-generation",
+      "eventType": "platform_release",
+      "category": "platform",
+      "title": "Civic portrait generation moved to the protected Workers AI allowance",
+      "summary": "The private Civic Profile portrait generator now uses Cloudflare Workers AI instead of the retired OpenAI image route. Portrait generation and Learning assessment share one auditable daily usage record and the same 9,000-unit protective ceiling. The portal disables the generator before another portrait could cross that ceiling, presents a red daily-limit state with a reset explanation, and refreshes the displayed allowance after successful generation. Portrait uploads remain authenticated, origin-restricted, validated, and private to the generation request.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "Private Civic Profile Portrait Generator",
+      "subjectRef": "release:v4-cloudflare-civic-portrait-generator",
+      "occurredAt": "2026-08-23T20:26:17.538Z",
+      "utopianDate": "Conceptday, Aura 17, Utopian Year 1",
+      "gregorianDate": "August 23, 2026",
+      "sourceLabel": "The Utopian Society private Civic Profile",
+      "sourceUrl": "https://utopiansocietycorpus.org/portal",
+      "metadata": {
+        "version": "4.0.0",
+        "commit": "aac8bf52c52c154bcaa41c6f13d11f4442dbedbf",
+        "workerVersion": "e870e7a3-91cc-4d7b-82eb-358a9b55a35e",
+        "sitesVersion": 34,
+        "releaseTests": 71,
+        "model": "@cf/black-forest-labs/flux-2-klein-9b",
+        "sharedDailyAllocation": 10000,
+        "protectiveLimit": 9000,
+        "portraitEstimate": 1409,
+        "portraitInputPixels": "496 x 496",
+        "portraitOutputPixels": "1024 x 1024",
+        "changes": [
+          "Removed the OpenAI-backed Sites portrait route",
+          "Added authenticated portrait generation to the civic Worker",
+          "Recorded successful portrait generation in the Learning portal's existing daily AI usage row",
+          "Refused portrait generation before its estimated use could cross the 9,000-unit protective ceiling",
+          "Added a red disabled generator state with a hover and keyboard-focus reset explanation",
+          "Refreshed the shared portal allowance immediately after successful generation",
+          "Preserved the original 512 x 512 saved-avatar crop while using a model-compatible 496 x 496 generation input"
+        ]
+      }
+    }
+  ]
+}
