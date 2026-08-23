@@ -974,6 +974,7 @@ const CROPPED_AVATAR_SIZE = 512;
 
 type CropImageSize = { width: number; height: number };
 type CropOffset = { x: number; y: number };
+type PortraitTreatment = "original" | "vitruvian-color" | "vitruvian-sepia";
 
 function cropGeometry(image: CropImageSize, cropSize: number, zoom: number) {
   const baseScale = Math.max(cropSize / image.width, cropSize / image.height);
@@ -1009,6 +1010,111 @@ function canvasBlob(canvas: HTMLCanvasElement, type: string, quality?: number) {
   return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
 }
 
+function boxBlurChannel(source: Float32Array, width: number, height: number, radius: number) {
+  const horizontal = new Float32Array(source.length);
+  const output = new Float32Array(source.length);
+  const diameter = radius * 2 + 1;
+  const clampX = (value: number) => Math.max(0, Math.min(width - 1, value));
+  const clampY = (value: number) => Math.max(0, Math.min(height - 1, value));
+
+  for (let y = 0; y < height; y += 1) {
+    const row = y * width;
+    let sum = 0;
+    for (let x = -radius; x <= radius; x += 1) sum += source[row + clampX(x)];
+    for (let x = 0; x < width; x += 1) {
+      horizontal[row + x] = sum / diameter;
+      sum += source[row + clampX(x + radius + 1)] - source[row + clampX(x - radius)];
+    }
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    let sum = 0;
+    for (let y = -radius; y <= radius; y += 1) sum += horizontal[clampY(y) * width + x];
+    for (let y = 0; y < height; y += 1) {
+      output[y * width + x] = sum / diameter;
+      sum += horizontal[clampY(y + radius + 1) * width + x] - horizontal[clampY(y - radius) * width + x];
+    }
+  }
+  return output;
+}
+
+function applyVitruvianTreatment(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  treatment: Exclude<PortraitTreatment, "original">,
+) {
+  const frame = context.getImageData(0, 0, width, height);
+  const pixels = frame.data;
+  const gray = new Float32Array(width * height);
+  const inverse = new Float32Array(width * height);
+  for (let index = 0; index < gray.length; index += 1) {
+    const pixel = index * 4;
+    const luminance = pixels[pixel] * 0.299 + pixels[pixel + 1] * 0.587 + pixels[pixel + 2] * 0.114;
+    gray[index] = luminance;
+    inverse[index] = 255 - luminance;
+  }
+  const blurredInverse = boxBlurChannel(inverse, width, height, Math.max(3, Math.round(width / 100)));
+  const parchment = treatment === "vitruvian-color" ? [207, 157, 75] : [214, 169, 88];
+
+  for (let index = 0; index < gray.length; index += 1) {
+    const pixel = index * 4;
+    const x = index % width;
+    const y = Math.floor(index / width);
+    const luminance = gray[index];
+    const left = gray[y * width + Math.max(0, x - 1)];
+    const above = gray[Math.max(0, y - 1) * width + x];
+    const edge = Math.min(95, Math.abs(luminance - left) + Math.abs(luminance - above));
+    const divisor = Math.max(1, 255 - blurredInverse[index]);
+    const dodge = Math.min(255, luminance * 255 / divisor);
+    const pencilInk = Math.min(185, (255 - dodge) * 1.18 + edge * 0.72);
+    const shade = luminance / 255;
+    const grain = ((((x * 37 + y * 17) % 29) / 28) - 0.5) * 8;
+    const hatch = shade < 0.52 && (x + y) % 7 === 0 ? (0.52 - shade) * 30 : 0;
+    const line = pencilInk * 0.78 + hatch;
+
+    if (treatment === "vitruvian-color") {
+      const mutedRed = luminance * 0.5 + pixels[pixel] * 0.5;
+      const mutedGreen = luminance * 0.5 + pixels[pixel + 1] * 0.5;
+      const mutedBlue = luminance * 0.5 + pixels[pixel + 2] * 0.5;
+      pixels[pixel] = Math.max(0, Math.min(255, mutedRed * 0.7 + parchment[0] * 0.3 - line + grain));
+      pixels[pixel + 1] = Math.max(0, Math.min(255, mutedGreen * 0.7 + parchment[1] * 0.3 - line * 0.92 + grain));
+      pixels[pixel + 2] = Math.max(0, Math.min(255, mutedBlue * 0.66 + parchment[2] * 0.34 - line * 0.78 + grain));
+    } else {
+      const paperTone = 0.48 + shade * 0.52;
+      pixels[pixel] = Math.max(0, Math.min(255, parchment[0] * paperTone - line + grain));
+      pixels[pixel + 1] = Math.max(0, Math.min(255, parchment[1] * paperTone - line * 0.9 + grain));
+      pixels[pixel + 2] = Math.max(0, Math.min(255, parchment[2] * paperTone - line * 0.72 + grain));
+    }
+    pixels[pixel + 3] = 255;
+  }
+  context.putImageData(frame, 0, 0);
+}
+
+function drawCroppedAvatar(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  imageSize: CropImageSize,
+  cropSize: number,
+  zoom: number,
+  offset: CropOffset,
+  outputSize: number,
+  treatment: PortraitTreatment,
+) {
+  const geometry = cropGeometry(imageSize, cropSize, zoom);
+  const outputScale = outputSize / cropSize;
+  context.fillStyle = treatment === "original" ? "#061d18" : "#c79249";
+  context.fillRect(0, 0, outputSize, outputSize);
+  context.drawImage(
+    image,
+    ((cropSize - geometry.width) / 2 + offset.x) * outputScale,
+    ((cropSize - geometry.height) / 2 + offset.y) * outputScale,
+    geometry.width * outputScale,
+    geometry.height * outputScale,
+  );
+  if (treatment !== "original") applyVitruvianTreatment(context, outputSize, outputSize, treatment);
+}
+
 function ProfilePhotoSettings({
   civicName,
   avatarUrl,
@@ -1023,11 +1129,14 @@ function ProfilePhotoSettings({
   const [cropSize, setCropSize] = useState(320);
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState<CropOffset>({ x: 0, y: 0 });
+  const [treatment, setTreatment] = useState<PortraitTreatment>("original");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const fileInput = useRef<HTMLInputElement | null>(null);
   const cropStage = useRef<HTMLDivElement | null>(null);
+  const filteredPreview = useRef<HTMLCanvasElement | null>(null);
+  const cropImage = useRef<HTMLImageElement | null>(null);
   const sourceUrlRef = useRef("");
   const drag = useRef<{ pointerId: number; x: number; y: number; offset: CropOffset } | null>(null);
   const geometry = cropGeometry(sourceSize, cropSize, zoom);
@@ -1039,6 +1148,8 @@ function ProfilePhotoSettings({
     setSourceUrl("");
     setZoom(1);
     setOffset({ x: 0, y: 0 });
+    setTreatment("original");
+    cropImage.current = null;
     drag.current = null;
   }
 
@@ -1060,13 +1171,30 @@ function ProfilePhotoSettings({
     setOffset((current) => clampCropOffset(current, cropGeometry(sourceSize, cropSize, zoom)));
   }, [sourceSize, cropSize, zoom]);
 
+  useEffect(() => {
+    if (!sourceUrl || treatment === "original" || !filteredPreview.current || !cropImage.current) return;
+    const canvas = filteredPreview.current;
+    const image = cropImage.current;
+    const previewSize = Math.max(1, Math.round(cropSize));
+    const frame = requestAnimationFrame(() => {
+      canvas.width = previewSize;
+      canvas.height = previewSize;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      drawCroppedAvatar(context, image, sourceSize, cropSize, zoom, offset, previewSize, treatment);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [sourceUrl, sourceSize, cropSize, zoom, offset, treatment]);
+
   async function openCropSource(nextUrl: string) {
     const image = await loadCropImage(nextUrl);
     if (sourceUrlRef.current) URL.revokeObjectURL(sourceUrlRef.current);
     sourceUrlRef.current = nextUrl;
     setSourceSize({ width: image.naturalWidth, height: image.naturalHeight });
+    cropImage.current = image;
     setZoom(1);
     setOffset({ x: 0, y: 0 });
+    setTreatment("original");
     setSourceUrl(nextUrl);
   }
 
@@ -1131,22 +1259,13 @@ function ProfilePhotoSettings({
     setMessage("");
     setError("");
     try {
-      const image = await loadCropImage(sourceUrl);
+      const image = cropImage.current || await loadCropImage(sourceUrl);
       const canvas = document.createElement("canvas");
       canvas.width = CROPPED_AVATAR_SIZE;
       canvas.height = CROPPED_AVATAR_SIZE;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("This browser could not prepare the cropped profile photo.");
-      context.fillStyle = "#061d18";
-      context.fillRect(0, 0, CROPPED_AVATAR_SIZE, CROPPED_AVATAR_SIZE);
-      const outputScale = CROPPED_AVATAR_SIZE / cropSize;
-      context.drawImage(
-        image,
-        ((cropSize - geometry.width) / 2 + offset.x) * outputScale,
-        ((cropSize - geometry.height) / 2 + offset.y) * outputScale,
-        geometry.width * outputScale,
-        geometry.height * outputScale,
-      );
+      drawCroppedAvatar(context, image, sourceSize, cropSize, zoom, offset, CROPPED_AVATAR_SIZE, treatment);
       const blob = await canvasBlob(canvas, "image/webp", 0.9) || await canvasBlob(canvas, "image/png");
       if (!blob) throw new Error("This browser could not create the cropped profile photo.");
       const extension = blob.type === "image/webp" ? "webp" : "png";
@@ -1220,7 +1339,14 @@ function ProfilePhotoSettings({
             width: `${geometry.width}px`,
             height: `${geometry.height}px`,
             transform: `translate(-50%, -50%) translate(${offset.x}px, ${offset.y}px)`,
+            opacity: treatment === "original" ? 1 : 0,
           }}
+        />
+        <canvas
+          ref={filteredPreview}
+          className="profile-photo-filtered-preview"
+          aria-hidden="true"
+          style={{ opacity: treatment === "original" ? 0 : 1 }}
         />
         <i className="profile-photo-crop-mask" aria-hidden="true" />
       </div>
@@ -1235,6 +1361,14 @@ function ProfilePhotoSettings({
             value={zoom}
             onChange={(event) => setZoom(Number(event.target.value))}
           />
+        </label>
+        <label>Portrait treatment
+          <select value={treatment} onChange={(event) => setTreatment(event.target.value as PortraitTreatment)}>
+            <option value="original">Original photograph</option>
+            <option value="vitruvian-color">Vitruvian colored pencil</option>
+            <option value="vitruvian-sepia">Vitruvian sepia pencil</option>
+          </select>
+          <small>Renaissance anatomical-sketch treatment processed entirely in this browser. The preview is the saved effect.</small>
         </label>
         <label>Horizontal position
           <input

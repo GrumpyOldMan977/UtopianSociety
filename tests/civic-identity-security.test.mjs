@@ -83,6 +83,7 @@ test("the public citizen directory lists only explicit public visibility", async
 test("profile photographs are framed in authenticated profile settings before upload", async () => {
   const portal = await source("app/components/CitizenPortal.tsx");
   const hero = section(portal, '<section className="citizen-identity"', "{identitySettingsOpen &&");
+  const photoFilters = section(portal, "function boxBlurChannel", "function ProfilePhotoSettings");
   const cropper = section(portal, "function ProfilePhotoSettings", "function PublicProfileSettings");
   const publicSettings = section(portal, "function PublicProfileSettings", "function PrivateIdentitySettings");
   const styles = await source("app/citizen-portal.css");
@@ -90,8 +91,13 @@ test("profile photographs are framed in authenticated profile settings before up
   assert.doesNotMatch(hero, /type="file"|Replace photo|deleteProfileAvatar|uploadProfileAvatar/);
   assert.match(cropper, /const canvas = document\.createElement\("canvas"\)/);
   assert.match(cropper, /canvas\.width = CROPPED_AVATAR_SIZE/);
-  assert.match(cropper, /context\.fillRect\(0, 0, CROPPED_AVATAR_SIZE, CROPPED_AVATAR_SIZE\)/);
+  assert.match(cropper, /drawCroppedAvatar\(context, image, sourceSize, cropSize, zoom, offset, CROPPED_AVATAR_SIZE, treatment\)/);
   assert.match(cropper, /min="0\.25"/);
+  assert.match(cropper, /Vitruvian colored pencil/);
+  assert.match(cropper, /Vitruvian sepia pencil/);
+  assert.match(cropper, /processed entirely in this browser/);
+  assert.match(photoFilters, /applyVitruvianTreatment/);
+  assert.match(photoFilters, /context\.putImageData/);
   assert.match(cropper, /uploadProfileAvatar\(new File/);
   assert.match(cropper, /Reframe current photo/);
   assert.match(cropper, /Only the finished 512 × 512 crop is uploaded/);
