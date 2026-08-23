@@ -148,3 +148,42 @@ test("Transparency Ledger release automation is Cloudflare-native and auditable"
   assert.match(enqueue, /ledger\/releases\/inbox/);
   assert.doesNotMatch(enqueue, /LEDGER_ADMIN_KEY|api\.github\.com|githubusercontent/);
 });
+
+test("the managed civic wire attributes every human change and safely supports custom RSS", async () => {
+  const worker = await source("cloudflare/civic-ledger/src/index.js");
+  const migration = await source("cloudflare/civic-ledger/migrations/0020_v4_ticker_source_manager.sql");
+  const studio = await source("app/components/EditorialStudio.tsx");
+  const client = await source("app/lib/civic-ledger.ts");
+  const session = section(worker, "async function requireCivicSession", "async function requireEditorialAuthority");
+  const ticker = section(worker, "function publicAnnouncement", "function publicationSlug");
+  const route = section(worker, "async function route", "const civicLedgerWorker");
+  const scheduled = section(worker, "async scheduled", "export default civicLedgerWorker");
+
+  assert.match(migration, /CREATE TABLE ticker_sources/);
+  assert.match(migration, /CREATE TABLE ticker_feed_items/);
+  assert.match(migration, /'rss'/);
+  assert.match(migration, /feeds\.bbci\.co\.uk/);
+  assert.match(migration, /updated_by TEXT NOT NULL/);
+  assert.match(session, /COALESCE\(p\.civic_name, c\.civic_name, a\.login_name\) AS civic_name/);
+  assert.match(ticker, /function tickerActor\(session\)/);
+  assert.match(ticker, /ticker_source_created/);
+  assert.match(ticker, /ticker_source_archived/);
+  assert.match(ticker, /ticker_announcement_updated/);
+  assert.match(ticker, /ticker_announcement_archived/);
+  assert.match(ticker, /ticker_feed_item_suppressed/);
+  assert.match(ticker, /actorName: tickerActor\(session\)|const actorName = tickerActor\(session\)/);
+  assert.match(ticker, /RSS sources must use a public HTTPS hostname/);
+  assert.match(ticker, /TICKER_FETCH_LIMIT/);
+  assert.match(ticker, /readTickerResponse/);
+  assert.match(route, /path === "\/v4\/ticker"/);
+  assert.match(route, /path === "\/v4\/editorial\/ticker"/);
+  assert.match(route, /request\.method === "PATCH" && tickerAnnouncementAction/);
+  assert.match(route, /request\.method === "PATCH" && tickerSourceAction/);
+  assert.match(scheduled, /syncTickerSources\(env\)/);
+  assert.match(studio, /Source Manager/);
+  assert.match(studio, /Add custom RSS/);
+  assert.match(studio, /Everything the public ticker contains/);
+  assert.match(studio, /Archive/);
+  assert.match(client, /getTickerManager/);
+  assert.doesNotMatch(section(worker, "async function createTickerAnnouncement", "async function updateTickerAnnouncement"), /input\.createdBy/);
+});

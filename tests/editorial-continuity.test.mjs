@@ -47,9 +47,14 @@ test("the WordPress bridge is read-only, review-gated, and incapable of WordPres
   assert.doesNotMatch(productionConfig, /"DEPLOYMENT_MODE":\s*"local-v3"/);
 });
 
-test("the public notice reflects the completed judging period", async () => {
+test("the public civic wire renders the Worker-managed rotation", async () => {
   const ticker = await source("app/components/CivicTicker.tsx");
-  assert.match(ticker, /V3 · Public site updated/);
-  assert.match(ticker, /OpenAI Build Week judging complete · Awaiting results\./);
+  const route = await source("app/api/ticker/route.ts");
+  assert.match(route, /\/v4\/ticker/);
+  assert.match(ticker, /payload\?\.items/);
+  assert.match(ticker, /ticker-treatment-/);
+  assert.match(ticker, /5 \* 60 \* 1000/);
+  assert.doesNotMatch(ticker, /V3 · Public site updated/);
+  assert.doesNotMatch(ticker, /OpenAI Build Week judging complete/);
   assert.doesNotMatch(ticker, /Public site frozen for review/i);
 });

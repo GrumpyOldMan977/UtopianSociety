@@ -2,29 +2,28 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { utopianDate } from "../lib/utopian-time";
-import type { PopulationSummary } from "../lib/civic-ledger";
 
-type TickerPayload = {
-  weather: null | {
-    temperatureF: number;
-    feelsLikeF: number;
-    condition: string;
-    windMph: number;
-    windDirection: string;
-    seaTemperatureF: number | null;
-    waveHeightFt: number | null;
-    currentMph: number | null;
-  };
-  population: PopulationSummary | null;
-  headlines: Array<{ title: string; url: string }>;
-  announcements: Array<{ announcementId: string; label: string; href: string | null; priority: number }>;
-  updatedAt: string;
+type TickerTreatment = "standard" | "vellum" | "alternating" | "urgent" | "pulse";
+
+type TickerItem = {
+  itemId: string;
+  recordType: "manual" | "system" | "feed";
+  sourceId: string | null;
+  sourceLabel: string;
+  kind: string;
+  label: string;
+  href: string | null;
+  priority: number;
+  sortOrder: number;
+  treatment: TickerTreatment;
+  status: "live";
 };
 
-type TickerItem = { label: string; href?: string };
-
-const WEATHER_SOURCE =
-  "https://open-meteo.com/en/docs#latitude=-30&longitude=-130&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m";
+type TickerPayload = {
+  items: TickerItem[];
+  credits: Array<{ sourceId: string; label: string; href: string }>;
+  updatedAt: string;
+};
 
 function civicTime(date: Date) {
   const civicDate = utopianDate(date);
@@ -35,6 +34,10 @@ function civicTime(date: Date) {
     hour12: false,
   }).format(date);
   return `${civicDate.weekday} · ${civicDate.month} ${civicDate.day} · ${civicDate.yearLabel} · ${utc} UTC`;
+}
+
+function externalDestination(href: string | null) {
+  return Boolean(href?.startsWith("https://"));
 }
 
 export function CivicTicker() {
@@ -56,7 +59,7 @@ export function CivicTicker() {
 
     setNow(new Date());
     void update();
-    const dataInterval = window.setInterval(update, 10 * 60 * 1000);
+    const dataInterval = window.setInterval(update, 5 * 60 * 1000);
     const clockInterval = window.setInterval(() => setNow(new Date()), 30 * 1000);
     return () => {
       active = false;
@@ -66,34 +69,42 @@ export function CivicTicker() {
   }, []);
 
   const items = useMemo<TickerItem[]>(() => {
-    const population = payload?.population;
-    const populationCopy = population
-      ? `Population: ${population.active.toLocaleString()}`
-      : "Population · Awaiting the public Citizen Register";
+    const managed = payload?.items?.map((item) => item.kind === "reference-time"
+      ? { ...item, label: now ? `Utopian Reference Time · ${civicTime(now)}` : item.label }
+      : item) ?? [];
+    if (managed.length) return managed;
     return [
       {
-        label: "V3 · Public site updated · OpenAI Build Week judging complete · Awaiting results.",
-        href: "/transparency-ledger",
+        itemId: "ticker-reference-time-fallback",
+        recordType: "system",
+        sourceId: null,
+        sourceLabel: "Utopian Reference Time",
+        kind: "reference-time",
+        label: now ? `Utopian Reference Time · ${civicTime(now)}` : "Utopian Reference Time · Synchronizing",
+        href: null,
+        priority: 10,
+        sortOrder: 0,
+        treatment: "standard",
+        status: "live",
       },
-      ...(payload?.announcements ?? []).map((announcement) => ({
-        label: `Local · ${announcement.label}`,
-        href: announcement.href || "/blogs-essays",
-      })),
       {
-        label: "Local News · The Utopian Society enters OpenAI Build Week · View the public submission",
-        href: "https://devpost.com/software/the-utopian-society",
+        itemId: "ticker-ledger-fallback",
+        recordType: "system",
+        sourceId: null,
+        sourceLabel: "Transparency Ledger",
+        kind: "ledger",
+        label: "Public record · Transparency Ledger operational",
+        href: "/transparency-ledger",
+        priority: 10,
+        sortOrder: 10,
+        treatment: "standard",
+        status: "live",
       },
-      { label: populationCopy, href: "/citizens" },
-      payload?.weather
-        ? { label: `South Pacific Gyre · ${payload.weather.temperatureF}°F · ${payload.weather.condition} · wind ${payload.weather.windDirection} ${payload.weather.windMph} mph${payload.weather.seaTemperatureF !== null ? ` · sea ${payload.weather.seaTemperatureF}°F` : ""}${payload.weather.waveHeightFt !== null ? ` · swell ${payload.weather.waveHeightFt} ft` : ""}`, href: WEATHER_SOURCE }
-        : { label: "South Pacific Gyre · Awaiting the next open-ocean observation", href: WEATHER_SOURCE },
-      { label: now ? `Utopian Reference Time · ${civicTime(now)}` : "Utopian Reference Time · Synchronizing" },
-      { label: "Public record · Transparency Ledger operational", href: "/transparency-ledger" },
-      ...(payload?.headlines ?? []).map((headline) => ({ label: `World · ${headline.title}`, href: headline.url })),
     ];
   }, [now, payload]);
 
   const duration = `${Math.max(58, items.map((item) => item.label).join(" ").length * 0.16)}s`;
+  const visibleCredits = payload?.credits?.slice(0, 3) ?? [];
 
   return (
     <section className="civic-ticker" aria-label="Live civic wire">
@@ -101,21 +112,22 @@ export function CivicTicker() {
       <div className="ticker-window">
         <div className="ticker-track" style={{ "--ticker-duration": duration } as CSSProperties} aria-hidden="true">
           {[0, 1].map((copy) => <span className="ticker-copy" key={copy}>
-            {items.map((item, index) => <span className="ticker-item" key={`${copy}-${index}`}><b>◆</b>{item.href ? <a href={item.href} tabIndex={-1} target={item.href.startsWith("http") ? "_blank" : undefined} rel={item.href.startsWith("http") ? "noreferrer" : undefined}>{item.label}</a> : item.label}</span>)}
+            {items.map((item) => <span className={`ticker-item ticker-treatment-${item.treatment}`} key={`${copy}-${item.itemId}`}><b>◆</b>{item.href ? <a href={item.href} tabIndex={-1} target={externalDestination(item.href) ? "_blank" : undefined} rel={externalDestination(item.href) ? "noreferrer" : undefined}>{item.label}</a> : item.label}</span>)}
           </span>)}
         </div>
         <ul className="ticker-a11y">
-          {items.map((item, index) => <li key={`accessible-${index}`}>
+          {items.map((item) => <li key={`accessible-${item.itemId}`}>
             {item.href
-              ? <a href={item.href} target={item.href.startsWith("http") ? "_blank" : undefined} rel={item.href.startsWith("http") ? "noreferrer" : undefined}>{item.label}</a>
+              ? <a href={item.href} target={externalDestination(item.href) ? "_blank" : undefined} rel={externalDestination(item.href) ? "noreferrer" : undefined}>{item.label}</a>
               : item.label}
           </li>)}
+          {(payload?.credits ?? []).map((credit) => <li key={`credit-${credit.sourceId}`}><a href={credit.href}>{credit.label} source</a></li>)}
         </ul>
       </div>
       <span className="ticker-credit">
-        <a href="/transparency-ledger">Ledger: Civic Portal</a>
-        <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Weather: Open-Meteo</a>
-        <a href="https://www.bbc.com/news/world" target="_blank" rel="noreferrer">Headlines: BBC News</a>
+        {visibleCredits.length
+          ? visibleCredits.map((credit) => <a key={credit.sourceId} href={credit.href} target={externalDestination(credit.href) ? "_blank" : undefined} rel={externalDestination(credit.href) ? "noreferrer" : undefined}>{credit.label}</a>)
+          : <a href="/transparency-ledger">Ledger: Civic Portal</a>}
       </span>
     </section>
   );

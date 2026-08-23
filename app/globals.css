@@ -897,3 +897,13 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.32;ba
 .lore-reading-end{text-align:center;padding:90px 24px 110px;background:#27272a;color:#efe4d2}.lore-reading-end>span{display:block;font-size:56px;color:#d1ae67}.lore-reading-end p{font:italic 27px Georgia,serif}.lore-reading-end a{display:inline-block;margin-top:18px;padding-bottom:7px;border-bottom:1px solid #d1ae67;color:#d1ae67;font-size:11px;letter-spacing:.15em;text-transform:uppercase}
 @media(max-width:850px){.lore-feature{grid-template-columns:55px 1fr}.lore-feature>a{grid-column:2;justify-self:start}.lore-reading-header,.lore-movement{grid-template-columns:1fr}.lore-moon-mark{max-width:370px}.lore-movement>header{position:static}.lore-reading-body{padding:0 clamp(24px,8vw,70px)}}
 @media(max-width:560px){.lore-feature{grid-template-columns:1fr;padding:28px 24px}.lore-feature-number{font-size:30px}.lore-feature>a{grid-column:1}.lore-reading-header{padding:60px 22px}.lore-reading-header nav{grid-template-columns:1fr}.lore-reading-header nav a:nth-child(odd){border-right:0}.lore-movement{padding:75px 0}.lore-movement p{font-size:17px}.lore-reading-body{padding:0 22px}}
+
+/* Managed Civic Wire treatments. Motion is intentionally slow and is removed
+   entirely when a visitor requests reduced motion. */
+.ticker-treatment-vellum{color:#fff0bd}.ticker-treatment-vellum b{color:#ead08e}
+.ticker-treatment-urgent{color:#ffc17b;text-shadow:0 0 10px rgba(209,88,45,.56)}.ticker-treatment-urgent b{color:#e06b48}
+.ticker-treatment-alternating{animation:ticker-alternate-color 3.4s steps(1,end) infinite}
+.ticker-treatment-pulse{animation:ticker-attention-pulse 2.2s ease-in-out infinite}
+@keyframes ticker-alternate-color{0%,49%{color:#f7dc8d}50%,100%{color:#b9e1c8}}
+@keyframes ticker-attention-pulse{0%,100%{opacity:1;text-shadow:0 0 7px rgba(232,195,104,.28)}50%{opacity:.72;text-shadow:0 0 14px rgba(255,211,108,.72)}}
+@media(prefers-reduced-motion:reduce){.ticker-treatment-alternating,.ticker-treatment-pulse{animation:none!important}.ticker-treatment-alternating{color:#b9e1c8}}

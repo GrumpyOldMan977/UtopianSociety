@@ -523,9 +523,77 @@ export type TickerAnnouncement = {
   startsAt: string | null;
   endsAt: string | null;
   priority: number;
+  sortOrder: number;
+  treatment: TickerTreatment;
   createdBy: string;
+  updatedBy: string;
   createdAt: string;
   updatedAt: string;
+  archivedAt: string | null;
+};
+
+export type TickerTreatment = "standard" | "vellum" | "alternating" | "urgent" | "pulse";
+
+export type TickerSource = {
+  sourceId: string;
+  sourceKey: string;
+  label: string;
+  sourceType: "system" | "rss";
+  endpointUrl: string | null;
+  creditUrl: string | null;
+  prefix: string;
+  enabled: boolean;
+  status: "active" | "paused" | "archived";
+  priority: number;
+  sortOrder: number;
+  treatment: TickerTreatment;
+  itemLimit: number;
+  refreshMinutes: number;
+  builtIn: boolean;
+  createdBy: string;
+  updatedBy: string;
+  lastCheckedAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+};
+
+export type TickerFeedItem = {
+  itemId: string;
+  sourceId: string;
+  label: string;
+  href: string | null;
+  publishedAt: string | null;
+  fetchedAt: string;
+  current: boolean;
+  suppressed: boolean;
+  suppressedBy: string | null;
+  suppressedAt: string | null;
+};
+
+export type ManagedTickerItem = {
+  itemId: string;
+  recordType: "manual" | "system" | "feed";
+  sourceId: string | null;
+  sourceLabel: string;
+  kind: string;
+  label: string;
+  href: string | null;
+  priority: number;
+  sortOrder: number;
+  treatment: TickerTreatment;
+  status: "live";
+};
+
+export type TickerManager = {
+  actor: string;
+  currentItems: ManagedTickerItem[];
+  announcements: TickerAnnouncement[];
+  sources: TickerSource[];
+  feedItems: TickerFeedItem[];
+  ledgerPolicy: string;
 };
 
 export type EditorialPublication = {
@@ -1064,18 +1132,83 @@ export function getEditorialAnalytics(days = 30) {
   return civicRequest<EditorialAnalytics>(`/v3/editorial/analytics?days=${days}`, undefined, true);
 }
 
+export function getTickerManager() {
+  return civicRequest<TickerManager>("/v4/editorial/ticker", undefined, true);
+}
+
+export type TickerAnnouncementInput = {
+  label: string;
+  href?: string | null;
+  status: "draft" | "scheduled" | "active" | "paused" | "expired" | "archived";
+  startsAt?: string | null;
+  endsAt?: string | null;
+  priority: number;
+  sortOrder: number;
+  treatment: TickerTreatment;
+};
+
 export function createLocalTickerAnnouncement(input: {
   label: string;
-  href?: string;
-  status: "draft" | "scheduled" | "active";
-  startsAt?: string;
-  endsAt?: string;
+  href?: string | null;
+  status: "draft" | "scheduled" | "active" | "paused";
+  startsAt?: string | null;
+  endsAt?: string | null;
   priority: number;
-  createdBy: string;
+  sortOrder: number;
+  treatment: TickerTreatment;
 }) {
-  return civicRequest<{ created: true; announcement: TickerAnnouncement }>("/v3/editorial/announcements", {
+  return civicRequest<{ created: true; announcement: TickerAnnouncement }>("/v4/editorial/ticker/announcements", {
     method: "POST",
     body: JSON.stringify(input),
+  }, true);
+}
+
+export function updateTickerAnnouncement(announcementId: string, input: Partial<TickerAnnouncementInput>) {
+  return civicRequest<{ updated: true; announcement: TickerAnnouncement }>(`/v4/editorial/ticker/announcements/${encodeURIComponent(announcementId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  }, true);
+}
+
+export type TickerSourceInput = {
+  label: string;
+  endpointUrl: string;
+  creditUrl?: string | null;
+  prefix: string;
+  enabled: boolean;
+  status: "active" | "paused" | "archived";
+  priority: number;
+  sortOrder: number;
+  treatment: TickerTreatment;
+  itemLimit: number;
+  refreshMinutes: number;
+};
+
+export function createTickerSource(input: TickerSourceInput) {
+  return civicRequest<{ created: true; source: TickerSource }>("/v4/editorial/ticker/sources", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, true);
+}
+
+export function updateTickerSource(sourceId: string, input: Partial<TickerSourceInput>) {
+  return civicRequest<{ updated: true; source: TickerSource }>(`/v4/editorial/ticker/sources/${encodeURIComponent(sourceId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  }, true);
+}
+
+export function refreshTickerSource(sourceId: string) {
+  return civicRequest<{ refreshed: boolean; count?: number; reason?: string }>(`/v4/editorial/ticker/sources/${encodeURIComponent(sourceId)}/refresh`, {
+    method: "POST",
+    body: "{}",
+  }, true);
+}
+
+export function setTickerFeedItemSuppressed(itemId: string, suppressed: boolean) {
+  return civicRequest<{ updated: boolean; item: TickerFeedItem }>(`/v4/editorial/ticker/feed-items/${encodeURIComponent(itemId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ suppressed }),
   }, true);
 }
 

@@ -61,9 +61,9 @@ test("server-renders the Utopian Society frontispiece", async () => {
   assert.match(html, /Utopian[\s\S]*Reference Time/);
   assert.match(html, /Five interlocking rings/i);
   assert.match(html, /Live civic wire/);
-  assert.match(html, /V3 · Public site updated · OpenAI Build Week judging complete · Awaiting results\./);
-  assert.match(html, /Weather: Open-Meteo/);
-  assert.match(html, /Headlines: BBC News/);
+  assert.match(html, /Public record · Transparency Ledger operational/);
+  assert.doesNotMatch(html, /V3 · Public site updated · OpenAI Build Week judging complete/);
+  assert.doesNotMatch(html, /Weather: Open-Meteo|Headlines: BBC News/);
   assert.doesNotMatch(html, /Current site/i);
   assert.doesNotMatch(html, /href="\/editorial"/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|Codex is working/i);

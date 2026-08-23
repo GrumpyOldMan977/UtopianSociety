@@ -899,9 +899,12 @@ async function requireCivicSession(request, env) {
   const tokenHash = await digest(token);
   const now = new Date().toISOString();
   const session = await env.DB.prepare(`
-    SELECT s.civic_id, s.session_token_hash, s.expires_at, a.status, a.login_name
+    SELECT s.civic_id, s.session_token_hash, s.expires_at, a.status, a.login_name,
+      COALESCE(p.civic_name, c.civic_name, a.login_name) AS civic_name
     FROM civic_sessions s
     JOIN civic_accounts a ON a.civic_id = s.civic_id
+    LEFT JOIN civic_profiles p ON p.civic_id = s.civic_id
+    LEFT JOIN citizens c ON c.civic_id = s.civic_id
     WHERE s.session_token_hash = ?1 AND s.revoked_at IS NULL
       AND s.expires_at > ?2 AND a.status = 'active'
     LIMIT 1
@@ -4981,9 +4984,112 @@ function publicAnnouncement(row) {
     startsAt: row.starts_at,
     endsAt: row.ends_at,
     priority: Number(row.priority),
+    sortOrder: Number(row.sort_order || 0),
+    treatment: row.treatment || "standard",
     createdBy: row.created_by,
+    updatedBy: row.updated_by || row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    archivedAt: row.archived_at || null,
+  };
+}
+
+const TICKER_TREATMENTS = new Set(["standard", "vellum", "alternating", "urgent", "pulse"]);
+const TICKER_ANNOUNCEMENT_STATUSES = new Set(["draft", "scheduled", "active", "paused", "expired", "archived"]);
+const TICKER_SOURCE_STATUSES = new Set(["active", "paused", "archived"]);
+const TICKER_FETCH_LIMIT = 512 * 1024;
+
+function tickerTreatment(value, fallback = "standard") {
+  return TICKER_TREATMENTS.has(value) ? value : fallback;
+}
+
+function tickerNumber(value, fallback, minimum, maximum) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? Math.max(minimum, Math.min(maximum, parsed)) : fallback;
+}
+
+function tickerActor(session) {
+  return cleanText(session?.civic_name || session?.login_name || "Authorized civic representative", 160);
+}
+
+function tickerDestination(value) {
+  const href = cleanText(value, 500, false);
+  if (!href) return null;
+  if (href.startsWith("/") && !href.startsWith("//")) return href;
+  let parsed;
+  try {
+    parsed = new URL(href);
+  } catch {
+    throw new ClientError("The ticker destination must be a Society path or secure HTTPS address.", 400, "ticker_destination_invalid");
+  }
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+    throw new ClientError("The ticker destination must be a Society path or secure HTTPS address.", 400, "ticker_destination_invalid");
+  }
+  return parsed.toString();
+}
+
+function tickerRssUrl(value) {
+  const raw = cleanText(value, 800);
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new ClientError("Enter a complete HTTPS RSS or Atom feed address.", 400, "ticker_source_url_invalid");
+  }
+  const hostname = parsed.hostname.toLowerCase().replace(/\.$/, "");
+  const blockedName = hostname === "localhost"
+    || [".localhost", ".local", ".internal", ".lan", ".home", ".test", ".invalid", ".nip.io", ".sslip.io", ".localtest.me"].some((suffix) => hostname.endsWith(suffix));
+  const ipLiteral = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)
+    || /^\d+$/.test(hostname)
+    || /^0x[0-9a-f]+$/i.test(hostname)
+    || hostname.includes(":");
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password || (parsed.port && parsed.port !== "443") || blockedName || ipLiteral) {
+    throw new ClientError("RSS sources must use a public HTTPS hostname.", 400, "ticker_source_url_unsafe");
+  }
+  parsed.hash = "";
+  return parsed.toString();
+}
+
+function publicTickerSource(row) {
+  return {
+    sourceId: row.source_id,
+    sourceKey: row.source_key,
+    label: row.label,
+    sourceType: row.source_type,
+    endpointUrl: row.endpoint_url || null,
+    creditUrl: row.credit_url || null,
+    prefix: row.prefix || "",
+    enabled: Boolean(row.enabled),
+    status: row.status,
+    priority: Number(row.priority),
+    sortOrder: Number(row.sort_order),
+    treatment: row.treatment || "standard",
+    itemLimit: Number(row.item_limit),
+    refreshMinutes: Number(row.refresh_minutes),
+    builtIn: Boolean(row.built_in),
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+    lastCheckedAt: row.last_checked_at || null,
+    lastSuccessAt: row.last_success_at || null,
+    lastError: row.last_error || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at || null,
+  };
+}
+
+function publicTickerFeedItem(row) {
+  return {
+    itemId: row.item_id,
+    sourceId: row.source_id,
+    label: row.label,
+    href: row.href || null,
+    publishedAt: row.published_at || null,
+    fetchedAt: row.fetched_at,
+    current: Boolean(row.is_current),
+    suppressed: Boolean(row.suppressed),
+    suppressedBy: row.suppressed_by || null,
+    suppressedAt: row.suppressed_at || null,
   };
 }
 
@@ -5353,14 +5459,17 @@ async function listTickerAnnouncements(request, env, url) {
 }
 
 async function createTickerAnnouncement(request, env, input) {
-  await requireEditorialAuthority(request, env);
+  const session = await requireEditorialAuthority(request, env);
+  const actorName = tickerActor(session);
   const label = cleanText(input.label, 240);
-  const href = cleanText(input.href, 500, false) || null;
-  const status = ["draft", "scheduled", "active"].includes(input.status) ? input.status : "draft";
-  const priority = Math.max(-100, Math.min(100, Number.parseInt(input.priority, 10) || 0));
-  const createdBy = cleanText(input.createdBy || "Adreto Nagdo Senoviros", 160);
-  const startsAt = cleanText(input.startsAt, 40, false) || (status === "active" ? new Date().toISOString() : null);
+  const href = tickerDestination(input.href);
+  const status = ["draft", "scheduled", "active", "paused"].includes(input.status) ? input.status : "draft";
+  const priority = tickerNumber(input.priority, 10, -100, 100);
+  const sortOrder = tickerNumber(input.sortOrder, 0, -1000, 1000);
+  const treatment = tickerTreatment(input.treatment);
+  const startsAt = cleanText(input.startsAt, 40, false) || null;
   const endsAt = cleanText(input.endsAt, 40, false) || null;
+  if (status === "scheduled" && !startsAt) throw new ClientError("A scheduled notice needs a beginning date.");
   if (startsAt && Number.isNaN(Date.parse(startsAt))) throw new ClientError("The announcement start is not a valid date.");
   if (endsAt && Number.isNaN(Date.parse(endsAt))) throw new ClientError("The announcement end is not a valid date.");
   if (startsAt && endsAt && Date.parse(endsAt) <= Date.parse(startsAt)) {
@@ -5374,7 +5483,7 @@ async function createTickerAnnouncement(request, env, input) {
     category: "editorial",
     title: "Civic-wire notice prepared",
     summary: label,
-    actorName: createdBy,
+    actorName,
     subjectName: "The Utopian Society public civic wire",
     subjectRef: announcementId,
     occurredAt: now,
@@ -5382,19 +5491,518 @@ async function createTickerAnnouncement(request, env, input) {
     gregorianDate: formatGregorianDate(new Date(now)),
     sourceLabel: "Editorial Studio · Civic wire",
     sourceUrl: civicPageUrl(request, env, "/editorial"),
-    metadata: { announcementId, status, startsAt, endsAt, priority, localSimulation: isLocalV3(env) },
+    metadata: { announcementId, status, startsAt, endsAt, priority, sortOrder, treatment, localSimulation: isLocalV3(env) },
   });
   await env.DB.batch([
     env.DB.prepare(`
       INSERT INTO ticker_announcements (
-        announcement_id, label, href, status, starts_at, ends_at, priority,
-        created_by, created_at, updated_at
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
-    `).bind(announcementId, label, href, status, startsAt, endsAt, priority, createdBy, now),
+        announcement_id, label, href, status, starts_at, ends_at, priority, sort_order,
+        treatment, created_by, updated_by, created_at, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10, ?11, ?11)
+    `).bind(announcementId, label, href, status, startsAt, endsAt, priority, sortOrder, treatment, actorName, now),
     event.statement,
   ]);
   const row = await env.DB.prepare("SELECT * FROM ticker_announcements WHERE announcement_id = ?1").bind(announcementId).first();
   return { created: true, announcement: publicAnnouncement(row) };
+}
+
+async function updateTickerAnnouncement(request, env, announcementId, input) {
+  const session = await requireEditorialAuthority(request, env);
+  const actorName = tickerActor(session);
+  const existing = await env.DB.prepare("SELECT * FROM ticker_announcements WHERE announcement_id = ?1")
+    .bind(announcementId).first();
+  if (!existing) throw new ClientError("That ticker notice was not found.", 404, "ticker_announcement_not_found");
+
+  const label = Object.hasOwn(input, "label") ? cleanText(input.label, 240) : existing.label;
+  const href = Object.hasOwn(input, "href") ? tickerDestination(input.href) : existing.href;
+  const status = Object.hasOwn(input, "status") ? cleanText(input.status, 20) : existing.status;
+  if (!TICKER_ANNOUNCEMENT_STATUSES.has(status)) throw new ClientError("Select a supported ticker status.");
+  const startsAt = Object.hasOwn(input, "startsAt") ? cleanText(input.startsAt, 40, false) || null : existing.starts_at;
+  const endsAt = Object.hasOwn(input, "endsAt") ? cleanText(input.endsAt, 40, false) || null : existing.ends_at;
+  const priority = Object.hasOwn(input, "priority") ? tickerNumber(input.priority, 10, -100, 100) : Number(existing.priority);
+  const sortOrder = Object.hasOwn(input, "sortOrder") ? tickerNumber(input.sortOrder, 0, -1000, 1000) : Number(existing.sort_order);
+  const treatment = Object.hasOwn(input, "treatment") ? tickerTreatment(input.treatment, existing.treatment) : existing.treatment;
+  if (status === "scheduled" && !startsAt) throw new ClientError("A scheduled notice needs a beginning date.");
+  if (startsAt && Number.isNaN(Date.parse(startsAt))) throw new ClientError("The announcement start is not a valid date.");
+  if (endsAt && Number.isNaN(Date.parse(endsAt))) throw new ClientError("The announcement end is not a valid date.");
+  if (startsAt && endsAt && Date.parse(endsAt) <= Date.parse(startsAt)) throw new ClientError("The announcement must end after it begins.");
+
+  const now = new Date().toISOString();
+  const archivedAt = status === "archived" ? existing.archived_at || now : null;
+  const eventType = status === "archived" && existing.status !== "archived"
+    ? "ticker_announcement_archived"
+    : existing.status === "archived" && status !== "archived"
+      ? "ticker_announcement_restored"
+      : "ticker_announcement_updated";
+  const action = eventType.endsWith("archived") ? "archived" : eventType.endsWith("restored") ? "restored" : "updated";
+  const event = await prepareEntry(env, {
+    eventKey: `civic-portal:${announcementId}:${eventType}:${crypto.randomUUID()}`,
+    eventType,
+    category: "editorial",
+    title: `Civic-wire notice ${action}`,
+    summary: `${actorName} ${action} the civic-wire notice “${label}.”`,
+    actorName,
+    subjectName: label,
+    subjectRef: announcementId,
+    occurredAt: now,
+    utopianDate: formatUtopianDate(new Date(now)),
+    gregorianDate: formatGregorianDate(new Date(now)),
+    sourceLabel: "Editorial Studio · Civic wire",
+    sourceUrl: civicPageUrl(request, env, "/editorial"),
+    metadata: { announcementId, previousStatus: existing.status, status, startsAt, endsAt, priority, sortOrder, treatment },
+  });
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE ticker_announcements SET
+        label = ?2, href = ?3, status = ?4, starts_at = ?5, ends_at = ?6,
+        priority = ?7, sort_order = ?8, treatment = ?9, updated_by = ?10,
+        updated_at = ?11, archived_at = ?12
+      WHERE announcement_id = ?1
+    `).bind(announcementId, label, href, status, startsAt, endsAt, priority, sortOrder, treatment, actorName, now, archivedAt),
+    event.statement,
+  ]);
+  const row = await env.DB.prepare("SELECT * FROM ticker_announcements WHERE announcement_id = ?1")
+    .bind(announcementId).first();
+  return { updated: true, announcement: publicAnnouncement(row) };
+}
+
+function tickerSourceInput(input, existing = null) {
+  const label = Object.hasOwn(input, "label") ? cleanText(input.label, 120) : existing?.label;
+  const prefix = Object.hasOwn(input, "prefix") ? cleanText(input.prefix, 40, false) : existing?.prefix || "";
+  const status = Object.hasOwn(input, "status") ? cleanText(input.status, 20) : existing?.status || "active";
+  if (!TICKER_SOURCE_STATUSES.has(status)) throw new ClientError("Select a supported ticker-source status.");
+  const endpointUrl = existing?.built_in
+    ? existing.endpoint_url
+    : Object.hasOwn(input, "endpointUrl") ? tickerRssUrl(input.endpointUrl) : existing?.endpoint_url;
+  if (!endpointUrl && (!existing || existing.source_type === "rss")) throw new ClientError("An RSS source needs a feed address.");
+  const creditUrl = Object.hasOwn(input, "creditUrl")
+    ? tickerDestination(input.creditUrl)
+    : existing?.credit_url || (endpointUrl ? new URL(endpointUrl).origin : null);
+  return {
+    label,
+    prefix,
+    endpointUrl,
+    creditUrl,
+    enabled: Object.hasOwn(input, "enabled") ? Boolean(input.enabled) : existing ? Boolean(existing.enabled) : true,
+    status,
+    priority: Object.hasOwn(input, "priority") ? tickerNumber(input.priority, 10, -100, 100) : Number(existing?.priority ?? 10),
+    sortOrder: Object.hasOwn(input, "sortOrder") ? tickerNumber(input.sortOrder, 0, -1000, 1000) : Number(existing?.sort_order ?? 0),
+    treatment: Object.hasOwn(input, "treatment") ? tickerTreatment(input.treatment, existing?.treatment) : existing?.treatment || "standard",
+    itemLimit: Object.hasOwn(input, "itemLimit") ? tickerNumber(input.itemLimit, 3, 1, 10) : Number(existing?.item_limit ?? 3),
+    refreshMinutes: Object.hasOwn(input, "refreshMinutes") ? tickerNumber(input.refreshMinutes, 5, 5, 1440) : Number(existing?.refresh_minutes ?? 5),
+  };
+}
+
+async function createTickerSource(request, env, input) {
+  const session = await requireEditorialAuthority(request, env);
+  const actorName = tickerActor(session);
+  const values = tickerSourceInput(input);
+  const now = new Date().toISOString();
+  const sourceId = `TIS-${crypto.randomUUID()}`;
+  const sourceKey = `custom-${values.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 42) || "rss"}-${sourceId.slice(-8)}`;
+  const event = await prepareEntry(env, {
+    eventKey: `civic-portal:${sourceId}:created`,
+    eventType: "ticker_source_created",
+    category: "editorial",
+    title: "Civic-wire RSS source added",
+    summary: `${actorName} added “${values.label}” to the civic wire’s managed RSS sources.`,
+    actorName,
+    subjectName: values.label,
+    subjectRef: sourceId,
+    occurredAt: now,
+    utopianDate: formatUtopianDate(new Date(now)),
+    gregorianDate: formatGregorianDate(new Date(now)),
+    sourceLabel: "Editorial Studio · Civic wire Source Manager",
+    sourceUrl: civicPageUrl(request, env, "/editorial"),
+    metadata: { sourceId, sourceType: "rss", enabled: values.enabled, status: values.status, priority: values.priority, sortOrder: values.sortOrder, treatment: values.treatment },
+  });
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO ticker_sources (
+        source_id, source_key, label, source_type, endpoint_url, credit_url, prefix,
+        enabled, status, priority, sort_order, treatment, item_limit, refresh_minutes,
+        built_in, created_by, updated_by, created_at, updated_at
+      ) VALUES (?1, ?2, ?3, 'rss', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 0, ?14, ?14, ?15, ?15)
+    `).bind(sourceId, sourceKey, values.label, values.endpointUrl, values.creditUrl, values.prefix, values.enabled ? 1 : 0, values.status, values.priority, values.sortOrder, values.treatment, values.itemLimit, values.refreshMinutes, actorName, now),
+    event.statement,
+  ]);
+  if (values.enabled && values.status === "active") await refreshTickerSourceById(env, sourceId, true);
+  const row = await env.DB.prepare("SELECT * FROM ticker_sources WHERE source_id = ?1").bind(sourceId).first();
+  return { created: true, source: publicTickerSource(row) };
+}
+
+async function updateTickerSource(request, env, sourceId, input) {
+  const session = await requireEditorialAuthority(request, env);
+  const actorName = tickerActor(session);
+  const existing = await env.DB.prepare("SELECT * FROM ticker_sources WHERE source_id = ?1").bind(sourceId).first();
+  if (!existing) throw new ClientError("That ticker source was not found.", 404, "ticker_source_not_found");
+  const values = tickerSourceInput(input, existing);
+  const now = new Date().toISOString();
+  const archivedAt = values.status === "archived" ? existing.archived_at || now : null;
+  const eventType = values.status === "archived" && existing.status !== "archived"
+    ? "ticker_source_archived"
+    : existing.status === "archived" && values.status !== "archived"
+      ? "ticker_source_restored"
+      : "ticker_source_updated";
+  const action = eventType.endsWith("archived") ? "archived" : eventType.endsWith("restored") ? "restored" : "updated";
+  const event = await prepareEntry(env, {
+    eventKey: `civic-portal:${sourceId}:${eventType}:${crypto.randomUUID()}`,
+    eventType,
+    category: "editorial",
+    title: `Civic-wire source ${action}`,
+    summary: `${actorName} ${action} the civic-wire source “${values.label}.”`,
+    actorName,
+    subjectName: values.label,
+    subjectRef: sourceId,
+    occurredAt: now,
+    utopianDate: formatUtopianDate(new Date(now)),
+    gregorianDate: formatGregorianDate(new Date(now)),
+    sourceLabel: "Editorial Studio · Civic wire Source Manager",
+    sourceUrl: civicPageUrl(request, env, "/editorial"),
+    metadata: { sourceId, sourceType: existing.source_type, previousStatus: existing.status, status: values.status, enabled: values.enabled, priority: values.priority, sortOrder: values.sortOrder, treatment: values.treatment },
+  });
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE ticker_sources SET
+        label = ?2, endpoint_url = ?3, credit_url = ?4, prefix = ?5,
+        enabled = ?6, status = ?7, priority = ?8, sort_order = ?9,
+        treatment = ?10, item_limit = ?11, refresh_minutes = ?12,
+        updated_by = ?13, updated_at = ?14, archived_at = ?15
+      WHERE source_id = ?1
+    `).bind(sourceId, values.label, values.endpointUrl, values.creditUrl, values.prefix, values.enabled ? 1 : 0, values.status, values.priority, values.sortOrder, values.treatment, values.itemLimit, values.refreshMinutes, actorName, now, archivedAt),
+    event.statement,
+  ]);
+  if (values.enabled && values.status === "active" && (existing.endpoint_url !== values.endpointUrl || existing.status !== "active" || !existing.enabled)) {
+    await refreshTickerSourceById(env, sourceId, true);
+  }
+  const row = await env.DB.prepare("SELECT * FROM ticker_sources WHERE source_id = ?1").bind(sourceId).first();
+  return { updated: true, source: publicTickerSource(row) };
+}
+
+async function updateTickerFeedItem(request, env, itemId, input) {
+  const session = await requireEditorialAuthority(request, env);
+  const actorName = tickerActor(session);
+  const existing = await env.DB.prepare(`
+    SELECT i.*, s.label AS source_label FROM ticker_feed_items i
+    JOIN ticker_sources s ON s.source_id = i.source_id
+    WHERE i.item_id = ?1
+  `).bind(itemId).first();
+  if (!existing) throw new ClientError("That feed item was not found.", 404, "ticker_feed_item_not_found");
+  const suppressed = Boolean(input.suppressed);
+  if (Boolean(existing.suppressed) === suppressed) return { updated: false, item: publicTickerFeedItem(existing) };
+  const now = new Date().toISOString();
+  const eventType = suppressed ? "ticker_feed_item_suppressed" : "ticker_feed_item_restored";
+  const action = suppressed ? "suppressed" : "restored";
+  const event = await prepareEntry(env, {
+    eventKey: `civic-portal:${itemId}:${eventType}:${crypto.randomUUID()}`,
+    eventType,
+    category: "editorial",
+    title: `Civic-wire feed item ${action}`,
+    summary: `${actorName} ${action} “${existing.label}” from the current civic-wire rotation.`,
+    actorName,
+    subjectName: existing.label,
+    subjectRef: itemId,
+    occurredAt: now,
+    utopianDate: formatUtopianDate(new Date(now)),
+    gregorianDate: formatGregorianDate(new Date(now)),
+    sourceLabel: `Editorial Studio · ${existing.source_label}`,
+    sourceUrl: civicPageUrl(request, env, "/editorial"),
+    metadata: { itemId, sourceId: existing.source_id, suppressed },
+  });
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE ticker_feed_items SET suppressed = ?2, suppressed_by = ?3, suppressed_at = ?4
+      WHERE item_id = ?1
+    `).bind(itemId, suppressed ? 1 : 0, suppressed ? actorName : null, suppressed ? now : null),
+    event.statement,
+  ]);
+  const row = await env.DB.prepare("SELECT * FROM ticker_feed_items WHERE item_id = ?1").bind(itemId).first();
+  return { updated: true, item: publicTickerFeedItem(row) };
+}
+
+function decodeTickerXml(value) {
+  return String(value || "")
+    .replace(/^<!\[CDATA\[|\]\]>$/g, "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&#(\d+);/g, (_match, decimal) => String.fromCodePoint(Number(decimal)))
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;|&#39;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tickerXmlTag(block, names) {
+  for (const name of names) {
+    const match = block.match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`, "i"));
+    if (match) return decodeTickerXml(match[1]);
+  }
+  return "";
+}
+
+function parseTickerFeed(xml, limit) {
+  const rssBlocks = [...xml.matchAll(/<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi)].map((match) => match[1]);
+  const atomBlocks = rssBlocks.length ? [] : [...xml.matchAll(/<entry(?:\s[^>]*)?>([\s\S]*?)<\/entry>/gi)].map((match) => match[1]);
+  return [...rssBlocks, ...atomBlocks].slice(0, limit).map((block) => {
+    const label = tickerXmlTag(block, ["title"]);
+    const rssLink = tickerXmlTag(block, ["link"]);
+    const atomLink = block.match(/<link\b[^>]*\bhref=["']([^"']+)["'][^>]*>/i)?.[1] || "";
+    const href = rssLink || decodeTickerXml(atomLink);
+    const identity = tickerXmlTag(block, ["guid", "id"]) || href || label;
+    const publishedAt = tickerXmlTag(block, ["pubDate", "published", "updated", "dc:date"]);
+    let safeHref = null;
+    try { safeHref = tickerDestination(href); } catch { safeHref = null; }
+    return {
+      identity,
+      label: cleanText(label, 240, false),
+      href: safeHref,
+      publishedAt: publishedAt && !Number.isNaN(Date.parse(publishedAt)) ? new Date(publishedAt).toISOString() : null,
+    };
+  }).filter((item) => item.label);
+}
+
+async function readTickerResponse(response) {
+  const declared = Number(response.headers.get("content-length") || 0);
+  if (declared > TICKER_FETCH_LIMIT) throw new Error("The feed is larger than the protected ticker limit.");
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let total = 0;
+  let text = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > TICKER_FETCH_LIMIT) {
+      await reader.cancel();
+      throw new Error("The feed is larger than the protected ticker limit.");
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
+const TICKER_WEATHER_DESCRIPTIONS = {
+  0: "clear sky", 1: "mainly clear", 2: "partly cloudy", 3: "overcast",
+  45: "fog", 48: "rime fog", 51: "light drizzle", 53: "drizzle",
+  55: "dense drizzle", 61: "light rain", 63: "rain", 65: "heavy rain",
+  80: "rain showers", 81: "rain showers", 82: "heavy showers",
+  95: "thunderstorms", 96: "thunderstorms with hail", 99: "severe thunderstorms with hail",
+};
+
+function tickerCompassPoint(degrees) {
+  if (typeof degrees !== "number") return "variable";
+  const points = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  return points[Math.round(degrees / 45) % 8];
+}
+
+async function fetchTickerWeather() {
+  const weatherUrl = new URL("https://api.open-meteo.com/v1/forecast");
+  weatherUrl.search = new URLSearchParams({
+    latitude: "-32", longitude: "-120",
+    current: "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m",
+    temperature_unit: "fahrenheit", wind_speed_unit: "mph", timezone: "GMT", cell_selection: "sea",
+  }).toString();
+  const marineUrl = new URL("https://marine-api.open-meteo.com/v1/marine");
+  marineUrl.search = new URLSearchParams({
+    latitude: "-32", longitude: "-120",
+    current: "wave_height,sea_surface_temperature,ocean_current_velocity",
+    length_unit: "imperial", timezone: "GMT", cell_selection: "sea",
+  }).toString();
+  const [weatherResponse, marineResponse] = await Promise.all([
+    fetch(weatherUrl, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) }),
+    fetch(marineUrl, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) }),
+  ]);
+  if (!weatherResponse.ok) throw new Error(`Weather source returned ${weatherResponse.status}.`);
+  const weather = (await weatherResponse.json()).current || {};
+  const marine = marineResponse.ok ? (await marineResponse.json()).current || {} : {};
+  const seaFahrenheit = typeof marine.sea_surface_temperature === "number" ? marine.sea_surface_temperature * 9 / 5 + 32 : null;
+  const label = `South Pacific Gyre · ${Math.round(weather.temperature_2m || 0)}°F · ${TICKER_WEATHER_DESCRIPTIONS[weather.weather_code] || "mixed conditions"} · wind ${tickerCompassPoint(weather.wind_direction_10m)} ${Math.round(weather.wind_speed_10m || 0)} mph${seaFahrenheit !== null ? ` · sea ${Math.round(seaFahrenheit)}°F` : ""}${typeof marine.wave_height === "number" ? ` · swell ${marine.wave_height.toFixed(1)} ft` : ""}`;
+  return [{ identity: "south-pacific-weather-current", label, href: "https://open-meteo.com/", publishedAt: new Date().toISOString() }];
+}
+
+async function fetchTickerSourceItems(source) {
+  if (source.source_key === "south-pacific-weather") return fetchTickerWeather();
+  const feedUrl = tickerRssUrl(source.endpoint_url);
+  const response = await fetch(feedUrl, {
+    headers: { Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9" },
+    redirect: "follow",
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!response.ok) throw new Error(`The feed returned HTTP ${response.status}.`);
+  tickerRssUrl(response.url);
+  return parseTickerFeed(await readTickerResponse(response), Number(source.item_limit || 3));
+}
+
+async function storeTickerSourceItems(env, source, items) {
+  const now = new Date().toISOString();
+  const statements = [
+    env.DB.prepare("UPDATE ticker_feed_items SET is_current = 0 WHERE source_id = ?1").bind(source.source_id),
+  ];
+  for (const item of items) {
+    const itemKey = await digest(`${source.source_id}\n${item.identity}`);
+    const itemId = `TIF-${itemKey.slice(0, 32)}`;
+    statements.push(env.DB.prepare(`
+      INSERT INTO ticker_feed_items (
+        item_id, source_id, item_key, label, href, published_at, fetched_at, is_current
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1)
+      ON CONFLICT(item_key) DO UPDATE SET
+        label = excluded.label, href = excluded.href, published_at = excluded.published_at,
+        fetched_at = excluded.fetched_at, is_current = 1
+    `).bind(itemId, source.source_id, itemKey, item.label, item.href, item.publishedAt, now));
+  }
+  statements.push(env.DB.prepare(`
+    UPDATE ticker_sources SET last_checked_at = ?2, last_success_at = ?2,
+      last_error = NULL, updated_at = CASE WHEN updated_at > ?2 THEN updated_at ELSE ?2 END
+    WHERE source_id = ?1
+  `).bind(source.source_id, now));
+  await env.DB.batch(statements);
+  return items.length;
+}
+
+async function refreshTickerSourceById(env, sourceId, force = false) {
+  const source = await env.DB.prepare("SELECT * FROM ticker_sources WHERE source_id = ?1").bind(sourceId).first();
+  if (!source || !source.enabled || source.status !== "active") return { refreshed: false, reason: "inactive" };
+  if (source.source_type !== "rss" && source.source_key !== "south-pacific-weather") return { refreshed: false, reason: "generated" };
+  if (!force && source.last_checked_at && Date.now() - Date.parse(source.last_checked_at) < Number(source.refresh_minutes) * 60_000) {
+    return { refreshed: false, reason: "not-due" };
+  }
+  try {
+    const items = await fetchTickerSourceItems(source);
+    return { refreshed: true, count: await storeTickerSourceItems(env, source, items) };
+  } catch (error) {
+    const now = new Date().toISOString();
+    await env.DB.prepare(`
+      UPDATE ticker_sources SET last_checked_at = ?2, last_error = ?3 WHERE source_id = ?1
+    `).bind(sourceId, now, cleanText(String(error?.message || error), 300, false)).run();
+    console.error(JSON.stringify({ level: "error", message: "ticker-source-refresh-failed", sourceId, error: String(error) }));
+    return { refreshed: false, reason: "failed" };
+  }
+}
+
+async function syncTickerSources(env) {
+  const result = await env.DB.prepare(`
+    SELECT * FROM ticker_sources
+    WHERE enabled = 1 AND status = 'active'
+      AND (source_type = 'rss' OR source_key = 'south-pacific-weather')
+    ORDER BY priority DESC, sort_order ASC
+    LIMIT 50
+  `).all();
+  const outcomes = await Promise.allSettled((result.results || []).map((source) => refreshTickerSourceById(env, source.source_id)));
+  const refreshed = outcomes.filter((outcome) => outcome.status === "fulfilled" && outcome.value.refreshed).length;
+  console.log(JSON.stringify({ level: "info", message: "ticker-sources-synchronized", sources: outcomes.length, refreshed }));
+  return { sources: outcomes.length, refreshed };
+}
+
+function tickerPrefixedLabel(prefix, label) {
+  return prefix ? `${prefix} · ${label}` : label;
+}
+
+async function currentTickerItems(env) {
+  const now = new Date().toISOString();
+  const [sourceResult, announcementResult, feedResult, populationRow, ledgerRow] = await Promise.all([
+    env.DB.prepare(`SELECT * FROM ticker_sources WHERE enabled = 1 AND status = 'active' ORDER BY priority DESC, sort_order ASC`).all(),
+    env.DB.prepare(`
+      SELECT * FROM ticker_announcements
+      WHERE (status = 'active' OR (status = 'scheduled' AND starts_at IS NOT NULL AND starts_at <= ?1))
+        AND (starts_at IS NULL OR starts_at <= ?1)
+        AND (ends_at IS NULL OR ends_at > ?1)
+      ORDER BY priority DESC, sort_order ASC, created_at ASC
+    `).bind(now).all(),
+    env.DB.prepare(`
+      SELECT i.* FROM ticker_feed_items i
+      JOIN ticker_sources s ON s.source_id = i.source_id
+      WHERE i.is_current = 1 AND i.suppressed = 0 AND s.enabled = 1 AND s.status = 'active'
+      ORDER BY COALESCE(i.published_at, i.fetched_at) DESC
+    `).all(),
+    env.DB.prepare("SELECT COUNT(*) AS active FROM citizens WHERE standing = 'active'").first(),
+    env.DB.prepare("SELECT MAX(seq) AS sequence FROM ledger_entries").first(),
+  ]);
+  const sources = sourceResult.results || [];
+  const feedsBySource = new Map();
+  for (const item of feedResult.results || []) {
+    const items = feedsBySource.get(item.source_id) || [];
+    items.push(item);
+    feedsBySource.set(item.source_id, items);
+  }
+  const items = (announcementResult.results || []).map((row) => ({
+    itemId: row.announcement_id,
+    recordType: "manual",
+    sourceId: null,
+    sourceLabel: "Manual notice",
+    kind: "manual",
+    label: row.label,
+    href: row.href || null,
+    priority: Number(row.priority),
+    sortOrder: Number(row.sort_order),
+    treatment: row.treatment || "standard",
+    status: "live",
+  }));
+  for (const source of sources) {
+    const base = {
+      sourceId: source.source_id,
+      sourceLabel: source.label,
+      priority: Number(source.priority),
+      sortOrder: Number(source.sort_order),
+      treatment: source.treatment || "standard",
+      status: "live",
+    };
+    if (source.source_key === "population") {
+      items.push({ ...base, itemId: `${source.source_id}:current`, recordType: "system", kind: "population", label: tickerPrefixedLabel(source.prefix, `Population: ${Number(populationRow?.active || 0).toLocaleString("en-US")}`), href: source.credit_url || "/citizens" });
+    } else if (source.source_key === "utopian-reference-time") {
+      items.push({ ...base, itemId: `${source.source_id}:current`, recordType: "system", kind: "reference-time", label: "Utopian Reference Time · Synchronizing", href: null });
+    } else if (source.source_key === "transparency-ledger") {
+      items.push({ ...base, itemId: `${source.source_id}:current`, recordType: "system", kind: "ledger", label: tickerPrefixedLabel(source.prefix, `Public record · Transparency Ledger operational · Sequence ${Number(ledgerRow?.sequence || 0)}`), href: source.credit_url || "/transparency-ledger" });
+    } else {
+      for (const feed of (feedsBySource.get(source.source_id) || []).slice(0, Number(source.item_limit))) {
+        items.push({ ...base, itemId: feed.item_id, recordType: "feed", kind: source.source_key === "south-pacific-weather" ? "weather" : "rss", label: tickerPrefixedLabel(source.prefix, feed.label), href: feed.href || source.credit_url || null });
+      }
+    }
+  }
+  return items.sort((left, right) => right.priority - left.priority || left.sortOrder - right.sortOrder || left.label.localeCompare(right.label));
+}
+
+async function publicTicker(request, env) {
+  const [items, sourceResult] = await Promise.all([
+    currentTickerItems(env),
+    env.DB.prepare(`
+      SELECT source_id, label, credit_url FROM ticker_sources
+      WHERE enabled = 1 AND status = 'active' AND credit_url IS NOT NULL
+      ORDER BY priority DESC, sort_order ASC
+    `).all(),
+  ]);
+  return {
+    items,
+    credits: (sourceResult.results || []).map((source) => ({ sourceId: source.source_id, label: source.label, href: source.credit_url })),
+    updatedAt: new Date().toISOString(),
+    source: civicPageUrl(request, env, "/editorial"),
+  };
+}
+
+async function tickerManager(request, env) {
+  const session = await requireEditorialAuthority(request, env);
+  const [sourceResult, announcementResult, feedResult, currentItems] = await Promise.all([
+    env.DB.prepare("SELECT * FROM ticker_sources ORDER BY status = 'archived', priority DESC, sort_order ASC, label COLLATE NOCASE").all(),
+    env.DB.prepare("SELECT * FROM ticker_announcements ORDER BY status = 'archived', priority DESC, sort_order ASC, updated_at DESC").all(),
+    env.DB.prepare(`
+      SELECT i.* FROM ticker_feed_items i
+      WHERE i.is_current = 1 OR i.suppressed = 1
+      ORDER BY i.source_id, COALESCE(i.published_at, i.fetched_at) DESC
+      LIMIT 250
+    `).all(),
+    currentTickerItems(env),
+  ]);
+  return {
+    actor: tickerActor(session),
+    currentItems,
+    announcements: (announcementResult.results || []).map(publicAnnouncement),
+    sources: (sourceResult.results || []).map(publicTickerSource),
+    feedItems: (feedResult.results || []).map(publicTickerFeedItem),
+    ledgerPolicy: "Every human ticker configuration, notice, suppression, restoration, and archival change is appended to the Transparency Ledger under the authenticated civic identity.",
+  };
 }
 
 function publicationSlug(value) {
@@ -5551,6 +6159,11 @@ async function route(request, env) {
   if (request.method === "GET" && path === "/v1/ledger") return listLedger(request, env, url);
   if (request.method === "GET" && path === "/v1/population") return population(request, env);
   if (request.method === "GET" && path === "/v1/citizens") return listCitizens(request, env, url);
+  if (request.method === "GET" && path === "/v4/ticker") {
+    return json(request, await publicTicker(request, env), {
+      headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=900" },
+    });
+  }
   if (request.method === "GET" && path === "/v3/publications") {
     return json(request, await listPublications(env, url), {
       headers: { "Cache-Control": "public, max-age=120, stale-while-revalidate=600" },
@@ -5608,6 +6221,9 @@ async function route(request, env) {
   }
   if (request.method === "GET" && path === "/v3/editorial/announcements") {
     return json(request, await listTickerAnnouncements(request, env, url), { headers: { "Cache-Control": "no-store" } });
+  }
+  if (request.method === "GET" && path === "/v4/editorial/ticker") {
+    return json(request, await tickerManager(request, env), { headers: { "Cache-Control": "no-store" } });
   }
   if (request.method === "GET" && path === "/v3/editorial/analytics") {
     return json(request, await editorialAnalytics(request, env, url), { headers: { "Cache-Control": "no-store" } });
@@ -5786,6 +6402,42 @@ async function route(request, env) {
     return json(request, written, { status: 201, headers: { "Cache-Control": "no-store" } });
   }
 
+  if (request.method === "POST" && path === "/v4/editorial/ticker/announcements") {
+    const body = await readJson(request);
+    const written = await createTickerAnnouncement(request, env, body);
+    return json(request, written, { status: 201, headers: { "Cache-Control": "no-store" } });
+  }
+
+  if (request.method === "POST" && path === "/v4/editorial/ticker/sources") {
+    const body = await readJson(request);
+    const written = await createTickerSource(request, env, body);
+    return json(request, written, { status: 201, headers: { "Cache-Control": "no-store" } });
+  }
+
+  const tickerAnnouncementAction = path.match(/^\/v4\/editorial\/ticker\/announcements\/([A-Za-z0-9-]+)$/);
+  if (request.method === "PATCH" && tickerAnnouncementAction) {
+    const body = await readJson(request);
+    return json(request, await updateTickerAnnouncement(request, env, tickerAnnouncementAction[1], body), { headers: { "Cache-Control": "no-store" } });
+  }
+
+  const tickerSourceAction = path.match(/^\/v4\/editorial\/ticker\/sources\/([A-Za-z0-9-]+)$/);
+  if (request.method === "PATCH" && tickerSourceAction) {
+    const body = await readJson(request);
+    return json(request, await updateTickerSource(request, env, tickerSourceAction[1], body), { headers: { "Cache-Control": "no-store" } });
+  }
+
+  const tickerSourceRefresh = path.match(/^\/v4\/editorial\/ticker\/sources\/([A-Za-z0-9-]+)\/refresh$/);
+  if (request.method === "POST" && tickerSourceRefresh) {
+    await requireEditorialAuthority(request, env);
+    return json(request, await refreshTickerSourceById(env, tickerSourceRefresh[1], true), { headers: { "Cache-Control": "no-store" } });
+  }
+
+  const tickerFeedItemAction = path.match(/^\/v4\/editorial\/ticker\/feed-items\/([A-Za-z0-9-]+)$/);
+  if (request.method === "PATCH" && tickerFeedItemAction) {
+    const body = await readJson(request);
+    return json(request, await updateTickerFeedItem(request, env, tickerFeedItemAction[1], body), { headers: { "Cache-Control": "no-store" } });
+  }
+
   if (request.method === "POST" && path === "/v3/editorial/publications") {
     const body = await readJson(request, 80_000);
     const written = await createEditorialDraft(request, env, body);
@@ -5862,6 +6514,7 @@ const civicLedgerWorker = {
       const results = await Promise.allSettled([
         syncReleaseInbox(env),
         syncWordpressArchive(env),
+        syncTickerSources(env),
       ]);
       for (const result of results) {
         if (result.status === "rejected") {
