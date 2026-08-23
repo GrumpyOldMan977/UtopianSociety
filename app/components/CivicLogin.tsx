@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { loginCivicAccount } from "../lib/civic-ledger";
+import { CivicServiceError, loginCivicAccount } from "../lib/civic-ledger";
 
 const CERTIFICATE_PATTERN = /^USV-\d{4}-[A-F0-9]{12}$/;
 
@@ -45,6 +45,9 @@ export function CivicLogin() {
       sessionStorage.setItem("utopia.civicName", result.civicName);
       window.location.assign("/portal");
     } catch (cause) {
+      if (cause instanceof CivicServiceError && cause.code === "credential_upgrade_required") {
+        setFirstAccess(true);
+      }
       setError(cause instanceof Error ? cause.message : "The civic login could not be completed.");
       setBusy(false);
     }
@@ -63,7 +66,7 @@ export function CivicLogin() {
       <input id="civic-login-name" value={loginName} onChange={(event) => setLoginName(event.target.value)} autoComplete="username" required />
       <label htmlFor="civic-login-password">Password</label>
       <input id="civic-login-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={firstAccess ? "new-password" : "current-password"} minLength={10} maxLength={128} required />
-      <label className="civic-activation-choice"><input type="checkbox" checked={firstAccess} onChange={(event) => setFirstAccess(event.target.checked)} /><span>This is my first sign-in</span></label>
+      <label className="civic-activation-choice"><input type="checkbox" checked={firstAccess} onChange={(event) => setFirstAccess(event.target.checked)} /><span>First sign-in or credential upgrade</span></label>
       {firstAccess && <>
         <label htmlFor="civic-certificate-number">Immigration certificate number</label>
         <input
@@ -79,11 +82,11 @@ export function CivicLogin() {
           aria-describedby="civic-certificate-help"
           required
         />
-        <small id="civic-certificate-help">Enter the complete 21-character certificate number: USV, the four-digit reference year, and 12 hexadecimal characters. It activates the account once; the original password is never stored.</small>
+        <small id="civic-certificate-help">Enter the complete 21-character certificate number: USV, the four-digit reference year, and 12 hexadecimal characters. It activates or upgrades the account once; the original password is never stored.</small>
       </>}
       {error && <p className="portal-message is-error" role="alert">{error}</p>}
-      <button type="submit" disabled={busy || !loginName.trim() || password.length < 10 || (firstAccess && !certificateValid)}>{busy ? "Verifying…" : firstAccess ? "Activate My Civic Profile" : "Open My Civic Profile"}</button>
-      <small>After activation, clear “This is my first sign-in” and use only your civic login name and password. Your private records are available only through your authenticated civic session.</small>
+      <button type="submit" disabled={busy || !loginName.trim() || password.length < 10 || (firstAccess && !certificateValid)}>{busy ? "Verifying…" : firstAccess ? "Activate or Upgrade My Civic Profile" : "Open My Civic Profile"}</button>
+      <small>First activation and one-time credential upgrades also require the Immigration certificate number. Afterward, use only your civic login name and password. Your private records are available only through your authenticated civic session.</small>
     </form>
   </section>;
 }

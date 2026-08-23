@@ -105,6 +105,7 @@ export type CertificateIssuance = {
 
 export type CivicLoginResult = {
   activated: boolean;
+  credentialUpgraded: boolean;
   civicId: string;
   civicName: string;
   loginName: string;
@@ -598,6 +599,18 @@ export type WordpressHandoffManifest = {
   }>;
 };
 
+export class CivicServiceError extends Error {
+  code: string;
+  status: number;
+
+  constructor(message: string, code = "civic_service_error", status = 500) {
+    super(message);
+    this.name = "CivicServiceError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
 async function civicRequest<T>(path: string, init?: RequestInit, authenticated = false) {
   const sessionToken = authenticated && typeof window !== "undefined"
     ? sessionStorage.getItem("utopia.civicSession")
@@ -613,8 +626,14 @@ async function civicRequest<T>(path: string, init?: RequestInit, authenticated =
     },
     cache: "no-store",
   });
-  const result = await response.json() as T & { error?: string };
-  if (!response.ok) throw new Error(result.error || "The civic service could not complete this request.");
+  const result = await response.json() as T & { error?: string; code?: string };
+  if (!response.ok) {
+    throw new CivicServiceError(
+      result.error || "The civic service could not complete this request.",
+      result.code,
+      response.status,
+    );
+  }
   return result;
 }
 

@@ -42,7 +42,10 @@ const ASSESSMENT_QUESTION_COUNT = 100;
 const ASSESSMENT_PASSING_SCORE = 90;
 const ASSESSMENT_ATTEMPT_LIFETIME_MS = 2 * 60 * 60 * 1000;
 const CERTIFICATE_COLLISION_RETRIES = 6;
-const PASSWORD_HASH_ITERATIONS = 210_000;
+// Cloudflare Workers Web Crypto rejects PBKDF2 iteration counts above 100,000.
+// Keep new credentials portable between the local and production runtimes.
+const PASSWORD_HASH_ITERATIONS = 100_000;
+const CLOUDFLARE_PBKDF2_MAX_ITERATIONS = 100_000;
 const CIVIC_SESSION_LIFETIME_MS = 12 * 60 * 60 * 1000;
 const CIVIC_LOGIN_LOCK_MS = 5 * 60 * 1000;
 const LEARNING_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
@@ -749,10 +752,29 @@ async function loginCivicAccount(request, env, input) {
   }
 
   let activated = false;
-  if (account.status === "pending_activation") {
-    if (!certificateNumber || !(await secureEqual(certificateNumber.toUpperCase(), account.activation_certificate_number.toUpperCase()))) {
+  let credentialUpgraded = false;
+  const storedIterations = Number(account.password_iterations || 0);
+  const requiresCredentialUpgrade = env.DEPLOYMENT_MODE === "production"
+    && account.status === "active"
+    && storedIterations > CLOUDFLARE_PBKDF2_MAX_ITERATIONS;
+  if (account.status === "pending_activation" || requiresCredentialUpgrade) {
+    if (!certificateNumber && requiresCredentialUpgrade) {
+      throw new ClientError(
+        "This migrated civic account needs a one-time credential upgrade. Select first sign-in or credential upgrade, then enter the Immigration certificate number and the same password.",
+        409,
+        "credential_upgrade_required",
+      );
+    }
+    if (!certificateNumber || !account.activation_certificate_number
+      || !(await secureEqual(certificateNumber.toUpperCase(), account.activation_certificate_number.toUpperCase()))) {
       await recordFailedLogin(env, account, now);
-      throw new ClientError("First access requires the certificate number issued by Immigration.", 401, "activation_certificate_required");
+      throw new ClientError(
+        requiresCredentialUpgrade
+          ? "The Immigration certificate number was not accepted for this one-time credential upgrade."
+          : "First access requires the certificate number issued by Immigration.",
+        401,
+        requiresCredentialUpgrade ? "credential_upgrade_failed" : "activation_certificate_required",
+      );
     }
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const passwordHash = await derivePasswordHash(password, salt);
@@ -763,7 +785,8 @@ async function loginCivicAccount(request, env, input) {
           updated_at = ?5, last_login_at = ?5
       WHERE account_id = ?1
     `).bind(account.account_id, bytesToBase64(salt), passwordHash, PASSWORD_HASH_ITERATIONS, now.toISOString()).run();
-    activated = true;
+    activated = account.status === "pending_activation";
+    credentialUpgraded = requiresCredentialUpgrade;
   } else {
     if (account.status !== "active" || !account.password_salt || !account.password_hash) {
       throw new ClientError("This civic account is not available for login.", 403, "account_unavailable");
@@ -793,6 +816,7 @@ async function loginCivicAccount(request, env, input) {
   ]);
   return {
     activated,
+    credentialUpgraded,
     civicId: account.civic_id,
     civicName: account.civic_name,
     loginName: account.login_name,
