@@ -58,13 +58,13 @@ export function CitizenshipExit() {
       <dl>
         <div><dt>Civic name</dt><dd>{receipt.civicName}</dd></div>
         <div><dt>Prior standing</dt><dd>{receipt.standing}</dd></div>
-        <div><dt>Citizen reference</dt><dd>{receipt.reference}</dd></div>
+        <div><dt>Private verification reference</dt><dd>{receipt.reference}</dd></div>
         <div><dt>Declaration</dt><dd>{receipt.declaration}</dd></div>
         <div><dt>Utopian date</dt><dd>{receipt.utopianDate}</dd></div>
         <div><dt>Gregorian reference</dt><dd>{receipt.gregorianDate}</dd></div>
       </dl>
       {receipt.publicNote && <blockquote>“{receipt.publicNote}”</blockquote>}
-      <small>The public record contains the named change in civic standing. Questionnaire answers and internal review material remain protected.</small>
+      <small>The public record would contain only the named change in civic standing. The verification reference, questionnaire answers, and internal review material remain protected.</small>
     </div>
     <button className="exit-reset" type="button" onClick={() => setReceipt(null)}>Prepare another declaration</button>
   </section>;
@@ -79,7 +79,7 @@ export function CitizenshipExit() {
       <header><span>Voluntary exit questionnaire · Local demonstration</span><h3>Direct your own civic standing.</h3><p>Nothing entered here is transmitted or retained. Completing this form cannot presently alter an existing record.</p></header>
       <div className="exit-form-grid">
         <label><span>Civic name <em>required</em></span><input required minLength={2} value={civicName} onChange={(event) => setCivicName(event.target.value)} /></label>
-        <label><span>Certificate or citizen reference <em>required</em></span><input required minLength={4} value={reference} onChange={(event) => setReference(event.target.value)} /></label>
+        <label><span>Private civic account reference <em>required · local demonstration only</em></span><input required minLength={4} value={reference} onChange={(event) => setReference(event.target.value)} /></label>
         <label><span>Standing being left</span><select value={standing} onChange={(event) => setStanding(event.target.value)}><option>Virtual symbolic citizen</option><option>Resident or constitutional citizen</option></select></label>
         <label><span>Requested public status</span><select value={outcome} onChange={(event) => setOutcome(event.target.value)} disabled={standing !== "Virtual symbolic citizen"}><option>Withdrawn by citizen</option><option>Inactive by citizen choice</option></select></label>
         <label className="exit-wide"><span>What influenced the decision? <em>optional · private</em></span><select value={reason} onChange={(event) => setReason(event.target.value)}><option value="">No answer</option><option>Change in life or available capacity</option><option>Values or governance disagreement</option><option>Privacy or personal-boundary concern</option><option>Harm or unresolved conflict</option><option>Participation no longer desired</option><option>Another reason</option></select></label>
@@ -88,7 +88,7 @@ export function CitizenshipExit() {
       </div>
       <div className="exit-consents">
         <label><input type="checkbox" checked={voluntary} onChange={(event) => setVoluntary(event.target.checked)} /><span>I am directing this change voluntarily. I understand that reasons, repair, mediation, and conversation may be offered but cannot be required before exit.</span></label>
-        <label><input type="checkbox" checked={ledgerUnderstood} onChange={(event) => setLedgerUnderstood(event.target.checked)} /><span>I understand that my civic name, reference, date, prior standing, and exit status belong in the public Transparency Ledger; private questionnaire answers do not.</span></label>
+        <label><input type="checkbox" checked={ledgerUnderstood} onChange={(event) => setLedgerUnderstood(event.target.checked)} /><span>I understand that my civic name, date, prior standing, and exit status belong in the public Transparency Ledger; verification references and private questionnaire answers do not.</span></label>
       </div>
       <label className="exit-signature"><span>Type your civic name exactly to sign</span><input value={signature} onChange={(event) => setSignature(event.target.value)} autoComplete="off" /></label>
       <button className="exit-submit" type="submit" disabled={!voluntary || !ledgerUnderstood || signature.trim().toLocaleLowerCase() !== civicName.trim().toLocaleLowerCase()}>Prepare the exit declaration</button>

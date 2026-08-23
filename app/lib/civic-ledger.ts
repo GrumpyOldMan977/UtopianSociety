@@ -16,7 +16,6 @@ export type PopulationSummary = {
   totalRecorded: number;
   latestCitizen: null | {
     civicName: string;
-    certificateNumber: string;
     utopianDate: string;
     gregorianDate: string;
   };
@@ -26,7 +25,6 @@ export type PopulationSummary = {
 export type PublicCitizen = {
   civic_id: string;
   civic_name: string;
-  certificate_number: string;
   standing: "active" | "independent" | "revoked" | string;
   assessment_score: number;
   utopian_joined_date: string;
@@ -34,6 +32,20 @@ export type PublicCitizen = {
   joined_at: string;
   exited_at: string | null;
   source_label: string;
+  public_profile: boolean;
+  profile_slug: string | null;
+};
+
+export type PublicCitizenDirectoryEntry = {
+  slug: string;
+  civicName: string;
+  civicTitle: string;
+  publicBio: string;
+  hasAvatar: boolean;
+  civicStanding: string;
+  primaryContribution: string;
+  profileVisibility: "public";
+  updatedAt: string;
 };
 
 export type PublicCivicRecognition = {
@@ -100,6 +112,7 @@ export type CertificateIssuance = {
   account: null | {
     loginName: string;
     activationRequired: boolean;
+    activationToken: string | null;
   };
 };
 
@@ -672,7 +685,7 @@ async function civicBinary(path: string) {
   return response.blob();
 }
 
-export function loginCivicAccount(input: { loginName: string; password: string; certificateNumber?: string }) {
+export function loginCivicAccount(input: { loginName: string; password: string; activationToken?: string }) {
   return civicRequest<CivicLoginResult>("/v3/auth/login", {
     method: "POST",
     body: JSON.stringify(input),
@@ -703,6 +716,19 @@ export function getProfileAvatar() {
 
 export function getPublicCivicProfile(slug: string) {
   return civicRequest<PublicCivicProfile>(`/v3/public/citizens/${encodeURIComponent(slug)}`);
+}
+
+export function getPublicCitizenDirectory() {
+  return civicRequest<{ citizens: PublicCitizenDirectoryEntry[] }>("/v3/public/citizens");
+}
+
+export function civicProfileSlug(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 export function publicProfileAvatarUrl(slug: string) {

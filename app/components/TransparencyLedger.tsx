@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   civicLedgerApi,
   type LedgerEntry,
@@ -119,15 +120,17 @@ export function TransparencyLedger() {
       <header>
         <span className="eyebrow">Named civic standing</span>
         <h2 id="citizen-register-title">The Citizen Register</h2>
-        <p>Symbolic citizenship is public by design. Contact information, private application answers, and personal narrative are not part of this register.</p>
+        <p>Symbolic citizenship is public by design. Certificate identifiers, authentication material, contact information, private application answers, and personal narrative are not part of this register.</p>
       </header>
       <div className="citizen-register-table" role="table" aria-label="Virtual symbolic citizens">
         <div className="citizen-register-head" role="row">
-          <span role="columnheader">Citizen</span><span role="columnheader">Certificate</span><span role="columnheader">Entered</span><span role="columnheader">Standing</span>
+          <span role="columnheader">Citizen</span><span role="columnheader">Public profile</span><span role="columnheader">Entered</span><span role="columnheader">Standing</span>
         </div>
         {activeCitizens.map((citizen) => <article role="row" key={citizen.civic_id}>
-          <div role="cell"><strong>{citizen.civic_name}</strong><small>Assessment {citizen.assessment_score}%</small></div>
-          <code role="cell">{citizen.certificate_number}</code>
+          <div role="cell"><strong>{citizen.public_profile && citizen.profile_slug ? <Link href={`/citizens/${citizen.profile_slug}`}>{citizen.civic_name}</Link> : citizen.civic_name}</strong><small>Assessment {citizen.assessment_score}%</small></div>
+          <div role="cell" className="citizen-register-profile">{citizen.public_profile && citizen.profile_slug
+            ? <Link href={`/citizens/${citizen.profile_slug}`}>View profile</Link>
+            : <span>Not publicly listed</span>}</div>
           <div role="cell"><span>{citizen.utopian_joined_date}</span><small>{citizen.gregorian_joined_date}</small></div>
           <b role="cell" className={`standing-${citizen.standing}`}>{categoryLabel(citizen.standing)}</b>
         </article>)}

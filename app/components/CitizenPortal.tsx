@@ -7,6 +7,7 @@ import {
   affirmContributionEvidence,
   CivicPortalSnapshot,
   createLearningGoal,
+  civicProfileSlug,
   deleteProfileAvatar,
   deleteProtectedDocument,
   downloadProtectedDocument,
@@ -478,7 +479,7 @@ export function CitizenPortal() {
         <h1 id="citizen-name">{profile.civicName}</h1>
         {profile.civicTitle && <strong className="citizen-title">{profile.civicTitle}</strong>}
         <div className="citizen-profile-actions">
-          <Link href="/citizens/adreto-nagdo-senoviros">View public profile</Link>
+          <Link href={`/citizens/${civicProfileSlug(profile.civicName)}`}>View public profile</Link>
           <button type="button" onClick={() => setIdentitySettingsOpen((current) => !current)}>
             {identitySettingsOpen ? "Close identity & profile settings" : "Identity & profile settings"}
           </button>

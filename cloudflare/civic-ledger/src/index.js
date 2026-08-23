@@ -656,6 +656,19 @@ function cleanCertificateNumber(value, required = false) {
   return certificate;
 }
 
+function cleanActivationToken(value, required = false) {
+  const token = typeof value === "string" ? value.trim() : "";
+  if (!token && !required) return "";
+  if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
+    throw new ClientError(
+      "Enter the complete one-time activation code issued with the civic login name.",
+      400,
+      "activation_token_invalid",
+    );
+  }
+  return token;
+}
+
 async function derivePasswordHash(password, salt, iterations = PASSWORD_HASH_ITERATIONS) {
   const material = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({
@@ -711,15 +724,32 @@ async function requireCurrentCivicPassword(env, civicId, suppliedPassword) {
 }
 
 async function provisionPendingCivicAccount(env, civicId, civicName, certificateSerial, createdAt) {
+  const existing = await civicAccountByCivicId(env, civicId);
+  if (existing?.status === "active") return { account: existing, activationToken: null };
+
   const loginName = suggestedLoginName(civicName, certificateSerial);
-  await env.DB.prepare(`
-    INSERT OR IGNORE INTO civic_accounts (
-      account_id, civic_id, login_name, activation_certificate_number,
-      password_salt, password_hash, password_iterations, status,
-      failed_attempts, created_at, updated_at
-    ) VALUES (?1, ?2, ?3, ?4, NULL, NULL, ?5, 'pending_activation', 0, ?6, ?6)
-  `).bind(`USA-${crypto.randomUUID()}`, civicId, loginName, certificateSerial, PASSWORD_HASH_ITERATIONS, createdAt).run();
-  return civicAccountByCivicId(env, civicId);
+  const activationToken = randomToken();
+  const activationTokenHash = await digest(activationToken);
+  if (existing) {
+    await env.DB.prepare(`
+      UPDATE civic_accounts
+      SET activation_token_hash = ?2, activation_token_created_at = ?3, updated_at = ?3
+      WHERE account_id = ?1 AND status = 'pending_activation'
+    `).bind(existing.account_id, activationTokenHash, new Date().toISOString()).run();
+  } else {
+    await env.DB.prepare(`
+      INSERT INTO civic_accounts (
+        account_id, civic_id, login_name, activation_certificate_number,
+        password_salt, password_hash, password_iterations, status,
+        failed_attempts, created_at, updated_at, activation_token_hash,
+        activation_token_created_at
+      ) VALUES (?1, ?2, ?3, ?4, NULL, NULL, ?5, 'pending_activation', 0, ?6, ?6, ?7, ?6)
+    `).bind(
+      `USA-${crypto.randomUUID()}`, civicId, loginName, certificateSerial,
+      PASSWORD_HASH_ITERATIONS, createdAt, activationTokenHash,
+    ).run();
+  }
+  return { account: await civicAccountByCivicId(env, civicId), activationToken };
 }
 
 async function recordFailedLogin(env, account, now) {
@@ -736,7 +766,7 @@ async function loginCivicAccount(request, env, input) {
   requireCivicV3(request, env);
   const loginName = cleanLoginName(input.loginName);
   const password = cleanPassword(input.password);
-  const certificateNumber = cleanCertificateNumber(input.certificateNumber, false);
+  const activationToken = cleanActivationToken(input.activationToken, false);
   const account = await env.DB.prepare(`
     SELECT a.*, p.civic_name
     FROM civic_accounts a
@@ -752,42 +782,58 @@ async function loginCivicAccount(request, env, input) {
   }
 
   let activated = false;
-  let credentialUpgraded = false;
+  const credentialUpgraded = false;
   const storedIterations = Number(account.password_iterations || 0);
   const requiresCredentialUpgrade = env.DEPLOYMENT_MODE === "production"
     && account.status === "active"
     && storedIterations > CLOUDFLARE_PBKDF2_MAX_ITERATIONS;
-  if (account.status === "pending_activation" || requiresCredentialUpgrade) {
-    if (!certificateNumber && requiresCredentialUpgrade) {
+  if (account.status === "pending_activation") {
+    if (!account.activation_token_hash) {
       throw new ClientError(
-        "This migrated civic account needs a one-time credential upgrade. Select first sign-in or credential upgrade, then enter the Immigration certificate number and the same password.",
+        "This unactivated civic account predates private activation codes. Contact the civic administrator for a new one-time code.",
         409,
-        "credential_upgrade_required",
+        "activation_support_required",
       );
     }
-    if (!certificateNumber || !account.activation_certificate_number
-      || !(await secureEqual(certificateNumber.toUpperCase(), account.activation_certificate_number.toUpperCase()))) {
+    const suppliedTokenHash = activationToken ? await digest(activationToken) : "";
+    if (!activationToken || !(await secureEqual(suppliedTokenHash, account.activation_token_hash))) {
       await recordFailedLogin(env, account, now);
       throw new ClientError(
-        requiresCredentialUpgrade
-          ? "The Immigration certificate number was not accepted for this one-time credential upgrade."
-          : "First access requires the certificate number issued by Immigration.",
+        "The one-time activation code was not accepted.",
         401,
-        requiresCredentialUpgrade ? "credential_upgrade_failed" : "activation_certificate_required",
+        "activation_token_required",
       );
     }
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const passwordHash = await derivePasswordHash(password, salt);
-    await env.DB.prepare(`
+    const activationResult = await env.DB.prepare(`
       UPDATE civic_accounts
       SET password_salt = ?2, password_hash = ?3, password_iterations = ?4,
           status = 'active', failed_attempts = 0, locked_until = NULL,
+          activation_token_hash = NULL, activation_token_created_at = NULL,
           updated_at = ?5, last_login_at = ?5
-      WHERE account_id = ?1
-    `).bind(account.account_id, bytesToBase64(salt), passwordHash, PASSWORD_HASH_ITERATIONS, now.toISOString()).run();
-    activated = account.status === "pending_activation";
-    credentialUpgraded = requiresCredentialUpgrade;
+      WHERE account_id = ?1 AND status = 'pending_activation'
+        AND activation_token_hash = ?6
+    `).bind(
+      account.account_id, bytesToBase64(salt), passwordHash,
+      PASSWORD_HASH_ITERATIONS, now.toISOString(), suppliedTokenHash,
+    ).run();
+    if (Number(activationResult.meta?.changes || 0) !== 1) {
+      throw new ClientError(
+        "This one-time activation code has already been used or replaced.",
+        409,
+        "activation_token_consumed",
+      );
+    }
+    activated = true;
   } else {
+    if (requiresCredentialUpgrade) {
+      throw new ClientError(
+        "This migrated civic account requires an administrator-assisted credential reset. A public certificate cannot authorize account recovery.",
+        409,
+        "credential_upgrade_support_required",
+      );
+    }
     if (account.status !== "active" || !account.password_salt || !account.password_hash) {
       throw new ClientError("This civic account is not available for login.", 403, "account_unavailable");
     }
@@ -968,6 +1014,28 @@ async function appendLedgerEntry(env, rawEntry) {
   throw new Error("The ledger chain could not be extended.");
 }
 
+const PUBLIC_LEDGER_PRIVATE_KEYS = new Set([
+  "certificateNumber",
+  "certificate_number",
+  "activationToken",
+  "activation_token",
+  "activationTokenHash",
+  "activation_token_hash",
+]);
+
+function publicLedgerMetadata(value) {
+  if (Array.isArray(value)) return value.map(publicLedgerMetadata);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !PUBLIC_LEDGER_PRIVATE_KEYS.has(key))
+    .map(([key, nestedValue]) => [key, publicLedgerMetadata(nestedValue)]));
+}
+
+function publicSubjectRef(value) {
+  const reference = typeof value === "string" ? value : null;
+  return reference && /^USV-\d{4}-[A-F0-9]{12}$/i.test(reference) ? null : reference;
+}
+
 function publicEntry(row) {
   return {
     sequence: row.seq,
@@ -979,13 +1047,13 @@ function publicEntry(row) {
     summary: row.summary,
     actorName: row.actor_name,
     subjectName: row.subject_name,
-    subjectRef: row.subject_ref,
+    subjectRef: publicSubjectRef(row.subject_ref),
     occurredAt: row.occurred_at,
     utopianDate: row.utopian_date,
     gregorianDate: row.gregorian_date,
     sourceLabel: row.source_label,
     sourceUrl: row.source_url,
-    metadata: JSON.parse(row.metadata_json || "{}"),
+    metadata: publicLedgerMetadata(parseStoredJson(row.metadata_json, {})),
     supersedesId: row.supersedes_id,
     previousHash: row.previous_hash,
     integrityHash: row.integrity_hash,
@@ -1078,7 +1146,7 @@ async function listLedger(request, env, url) {
 
 async function population(request, env) {
   const summary = await env.DB.prepare("SELECT active_population, independent_population, revoked_population, total_recorded FROM population_summary").first();
-  const latest = await env.DB.prepare("SELECT civic_name, certificate_number, utopian_joined_date, gregorian_joined_date FROM citizens WHERE standing = 'active' ORDER BY joined_at DESC LIMIT 1").first();
+  const latest = await env.DB.prepare("SELECT civic_name, utopian_joined_date, gregorian_joined_date FROM citizens WHERE standing = 'active' ORDER BY joined_at DESC LIMIT 1").first();
   return json(request, {
     active: Number(summary?.active_population || 0),
     independent: Number(summary?.independent_population || 0),
@@ -1086,7 +1154,6 @@ async function population(request, env) {
     totalRecorded: Number(summary?.total_recorded || 0),
     latestCitizen: latest ? {
       civicName: latest.civic_name,
-      certificateNumber: latest.certificate_number,
       utopianDate: latest.utopian_joined_date,
       gregorianDate: latest.gregorian_joined_date,
     } : null,
@@ -1097,16 +1164,32 @@ async function population(request, env) {
 async function listCitizens(request, env, url) {
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 50));
   const result = await env.DB.prepare(`
-    SELECT civic_id, civic_name, certificate_number, standing, assessment_score,
-           utopian_joined_date, gregorian_joined_date, joined_at, exited_at, source_label
-    FROM citizens ORDER BY joined_at DESC LIMIT ?1
+    SELECT c.civic_id, c.civic_name, c.standing, c.assessment_score,
+           c.utopian_joined_date, c.gregorian_joined_date, c.joined_at,
+           c.exited_at, c.source_label, p.profile_visibility
+    FROM citizens c
+    LEFT JOIN civic_profiles p ON p.civic_id = c.civic_id
+    ORDER BY c.joined_at DESC LIMIT ?1
   `).bind(limit).all();
-  return json(request, { citizens: result.results || [] }, { headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=120" } });
+  const citizens = (result.results || []).map((citizen) => ({
+    civic_id: citizen.civic_id,
+    civic_name: citizen.civic_name,
+    standing: citizen.standing,
+    assessment_score: citizen.assessment_score,
+    utopian_joined_date: citizen.utopian_joined_date,
+    gregorian_joined_date: citizen.gregorian_joined_date,
+    joined_at: citizen.joined_at,
+    exited_at: citizen.exited_at,
+    source_label: citizen.source_label,
+    public_profile: citizen.profile_visibility === "public",
+    profile_slug: citizen.profile_visibility === "public" ? civicSlug(citizen.civic_name) : null,
+  }));
+  return json(request, { citizens }, { headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=120" } });
 }
 
 async function createCitizen(request, env, input) {
   const civicName = cleanText(input.civicName, 160);
-  const certificateNumber = cleanText(input.certificateNumber, 100);
+  const certificateNumber = cleanCertificateNumber(input.certificateNumber, true);
   const assessmentScore = Number(input.assessmentScore);
   if (!Number.isInteger(assessmentScore) || assessmentScore < 0 || assessmentScore > 100) throw new Error("Assessment score is invalid.");
   const entryInput = {
@@ -1116,13 +1199,13 @@ async function createCitizen(request, env, input) {
     summary: cleanText(input.summary || `${civicName} demonstrated civic comprehension, entered the virtual oath freely, and was recorded as an active virtual symbolic citizen.`, 2000),
     actorName: cleanText(input.actorName || "Immigration Civic Office", 160),
     subjectName: civicName,
-    subjectRef: certificateNumber,
+    subjectRef: null,
     occurredAt: cleanText(input.joinedAt, 40),
     utopianDate: cleanText(input.utopianDate, 120),
     gregorianDate: cleanText(input.gregorianDate, 80),
     sourceLabel: cleanText(input.sourceLabel, 180),
     sourceUrl: cleanText(input.sourceUrl, 500, false),
-    metadata: { certificateNumber, assessmentScore, standing: "active" },
+    metadata: { assessmentScore, standing: "active" },
   };
   const prepared = await prepareEntry(env, entryInput);
   const civicId = `USC-${crypto.randomUUID()}`;
@@ -1202,16 +1285,21 @@ async function issueCertificate(request, env, input) {
     if (existing.civic_name.toLocaleLowerCase() !== civicName.toLocaleLowerCase()) {
       throw new ClientError("This issuance request is already associated with a different civic name.", 409, "issuance_key_reused");
     }
-    const account = civicV3Enabled(env)
-      ? (await civicAccountByCivicId(env, existing.civic_id))
-        || (await provisionPendingCivicAccount(env, existing.civic_id, existing.civic_name, existing.certificate_number, existing.joined_at))
+    const provisioned = civicV3Enabled(env)
+      ? await provisionPendingCivicAccount(
+        env, existing.civic_id, existing.civic_name, existing.certificate_number, existing.joined_at,
+      )
       : null;
     return {
       created: false,
       certificate: issuedCertificate(existing),
       civicId: existing.civic_id,
       ledgerId: existing.entry_ledger_id,
-      account: account ? { loginName: account.login_name, activationRequired: account.status === "pending_activation" } : null,
+      account: provisioned?.account ? {
+        loginName: provisioned.account.login_name,
+        activationRequired: provisioned.account.status === "pending_activation",
+        activationToken: provisioned.activationToken,
+      } : null,
     };
   }
 
@@ -1230,14 +1318,13 @@ async function issueCertificate(request, env, input) {
       summary: `${civicName} demonstrated civic comprehension, entered the virtual oath freely, and was recorded as an active virtual symbolic citizen.`,
       actorName: "Immigration Civic Portal",
       subjectName: civicName,
-      subjectRef: serial,
+      subjectRef: null,
       occurredAt: joinedAt,
       utopianDate,
       gregorianDate,
       sourceLabel: `Immigration Civic Portal · automatic issuance ${input.assessmentVersion === ASSESSMENT_VERSION_V2 ? "v2" : "v1"}`,
       sourceUrl: `${request.headers.get("Origin")}/circles/immigration`,
       metadata: {
-        certificateNumber: serial,
         assessmentScore: score,
         assessmentVersion: input.assessmentVersion,
         assessmentAttemptId: verifiedAttempt?.attempt_id || null,
@@ -1261,16 +1348,20 @@ async function issueCertificate(request, env, input) {
     );
 
     const issuanceStatements = [prepared.statement, citizenStatement];
+    let activationToken = null;
     if (civicV3Enabled(env)) {
+      activationToken = randomToken();
+      const activationTokenHash = await digest(activationToken);
       issuanceStatements.push(env.DB.prepare(`
         INSERT INTO civic_accounts (
           account_id, civic_id, login_name, activation_certificate_number,
           password_salt, password_hash, password_iterations, status,
-          failed_attempts, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, NULL, NULL, ?5, 'pending_activation', 0, ?6, ?6)
+          failed_attempts, created_at, updated_at, activation_token_hash,
+          activation_token_created_at
+        ) VALUES (?1, ?2, ?3, ?4, NULL, NULL, ?5, 'pending_activation', 0, ?6, ?6, ?7, ?6)
       `).bind(
         `USA-${crypto.randomUUID()}`, civicId, suggestedLoginName(civicName, serial),
-        serial, PASSWORD_HASH_ITERATIONS, joinedAt,
+        serial, PASSWORD_HASH_ITERATIONS, joinedAt, activationTokenHash,
       ));
     }
     if (verifiedAttempt) {
@@ -1289,21 +1380,31 @@ async function issueCertificate(request, env, input) {
         certificate: { serial, civicName, score, utopianDate, gregorianDate },
         civicId,
         ledgerId: prepared.id,
-        account: account ? { loginName: account.login_name, activationRequired: true } : null,
+        account: account ? {
+          loginName: account.login_name,
+          activationRequired: true,
+          activationToken,
+        } : null,
       };
     } catch (error) {
       const concurrent = await citizenByIssuanceKey(env, issuanceKey);
       if (concurrent) {
-        const account = civicV3Enabled(env)
-          ? (await civicAccountByCivicId(env, concurrent.civic_id))
-            || (await provisionPendingCivicAccount(env, concurrent.civic_id, concurrent.civic_name, concurrent.certificate_number, concurrent.joined_at))
+        const provisioned = civicV3Enabled(env)
+          ? await provisionPendingCivicAccount(
+            env, concurrent.civic_id, concurrent.civic_name,
+            concurrent.certificate_number, concurrent.joined_at,
+          )
           : null;
         return {
           created: false,
           certificate: issuedCertificate(concurrent),
           civicId: concurrent.civic_id,
           ledgerId: concurrent.entry_ledger_id,
-          account: account ? { loginName: account.login_name, activationRequired: account.status === "pending_activation" } : null,
+          account: provisioned?.account ? {
+            loginName: provisioned.account.login_name,
+            activationRequired: provisioned.account.status === "pending_activation",
+            activationToken: provisioned.activationToken,
+          } : null,
         };
       }
       if (!String(error).includes("UNIQUE") || attempt === CERTIFICATE_COLLISION_RETRIES - 1) throw error;
@@ -1637,6 +1738,29 @@ async function visibleCivicProfileBySlug(env, slug) {
     ORDER BY created_at
   `).all();
   return (result.results || []).find((profile) => civicSlug(profile.civic_name) === slug) || null;
+}
+
+async function publicCivicDirectory(env) {
+  const result = await env.DB.prepare(`
+    SELECT civic_name, immigration_standing, contribution_status, civic_title,
+           public_bio, avatar_asset_id, updated_at
+    FROM civic_profiles
+    WHERE profile_visibility = 'public'
+    ORDER BY civic_name COLLATE NOCASE
+  `).all();
+  return {
+    citizens: (result.results || []).map((profile) => ({
+      slug: civicSlug(profile.civic_name),
+      civicName: profile.civic_name,
+      civicTitle: profile.civic_title || "Citizen",
+      publicBio: profile.public_bio || "",
+      hasAvatar: Boolean(profile.avatar_asset_id),
+      civicStanding: profile.immigration_standing || "Not publicly listed",
+      primaryContribution: publicContributionLabel(profile.contribution_status),
+      profileVisibility: "public",
+      updatedAt: profile.updated_at,
+    })),
+  };
 }
 
 function publicRecognition(row) {
@@ -5162,6 +5286,11 @@ async function route(request, env) {
   const publicProfileAvatarRoute = path.match(/^\/v3\/public\/citizens\/([a-z0-9-]+)\/avatar$/);
   if (request.method === "GET" && publicProfileAvatarRoute) {
     return publicProfileAvatar(request, env, publicProfileAvatarRoute[1]);
+  }
+  if (request.method === "GET" && path === "/v3/public/citizens") {
+    return json(request, await publicCivicDirectory(env), {
+      headers: { "Cache-Control": "public, max-age=60" },
+    });
   }
   const publicProfileRoute = path.match(/^\/v3\/public\/citizens\/([a-z0-9-]+)$/);
   if (request.method === "GET" && publicProfileRoute) {

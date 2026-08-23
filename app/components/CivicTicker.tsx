@@ -83,7 +83,7 @@ export function CivicTicker() {
         label: "Local News · The Utopian Society enters OpenAI Build Week · View the public submission",
         href: "https://devpost.com/software/the-utopian-society",
       },
-      { label: populationCopy, href: "/transparency-ledger#population" },
+      { label: populationCopy, href: "/citizens" },
       payload?.weather
         ? { label: `South Pacific Gyre · ${payload.weather.temperatureF}°F · ${payload.weather.condition} · wind ${payload.weather.windDirection} ${payload.weather.windMph} mph${payload.weather.seaTemperatureF !== null ? ` · sea ${payload.weather.seaTemperatureF}°F` : ""}${payload.weather.waveHeightFt !== null ? ` · swell ${payload.weather.waveHeightFt} ft` : ""}`, href: WEATHER_SOURCE }
         : { label: "South Pacific Gyre · Awaiting the next open-ocean observation", href: WEATHER_SOURCE },

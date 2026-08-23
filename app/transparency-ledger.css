@@ -17,3 +17,4 @@
 .ledger-live-status>span{width:9px;height:9px;border-radius:50%;background:#418b65;box-shadow:0 0 0 4px rgba(65,139,101,.13)}
 .ledger-live-status.is-paused{color:#8a6428!important}.ledger-live-status.is-paused>span{background:#b88736;box-shadow:0 0 0 4px rgba(184,135,54,.13)}
 @media(max-width:900px){.ledger-live-status{grid-column:1}}
+.citizen-register-profile a{justify-self:start;padding-bottom:4px;border-bottom:1px solid #8c6529;color:#744e19;font-size:11px;font-weight:850}.citizen-register-profile span{color:#776f62;font-size:12px}.citizen-register-table strong a{color:inherit}

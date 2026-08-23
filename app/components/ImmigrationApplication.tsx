@@ -21,6 +21,7 @@ type Certificate = {
   utopianDate: string;
   gregorianDate: string;
   loginName?: string;
+  activationToken?: string;
   preview?: boolean;
 };
 
@@ -173,7 +174,12 @@ export function ImmigrationApplication() {
         issuanceKey: issuanceKey.current,
       });
       if (issued.account?.loginName) sessionStorage.setItem("utopia.pendingLoginName", issued.account.loginName);
-      setCertificate({ ...issued.certificate, loginName: issued.account?.loginName });
+      if (issued.account?.activationToken) sessionStorage.setItem("utopia.pendingActivationToken", issued.account.activationToken);
+      setCertificate({
+        ...issued.certificate,
+        loginName: issued.account?.loginName,
+        activationToken: issued.account?.activationToken || undefined,
+      });
       setStage("certificate");
       document.getElementById("immigration-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
@@ -204,7 +210,7 @@ export function ImmigrationApplication() {
         <span className="eyebrow">Hopeful intake · Civic naturalization</span>
         <h2 id="immigration-workspace-title">Enter the covenant with clarity.</h2>
       </div>
-      <p>Your statements and contact field remain in this browser. Answers travel only to the local civic service for in-memory scoring and are discarded; only successful certificate details—civic name, score, dates, serial, and standing—enter the civic record.</p>
+      <p>Your statements and contact field remain in this browser. Answers travel only to the civic service for in-memory scoring and are discarded; only successful certificate details—civic name, score, dates, serial, and standing—enter the protected civic record. Certificate identifiers are not published.</p>
     </div>
 
     <ol className="immigration-stepper" aria-label="Symbolic naturalization process">
@@ -331,21 +337,22 @@ export function ImmigrationApplication() {
         <Link href="/corpus/immigration-codex">Read the governing Codex</Link>
         {!certificate.preview && <Link href="/login">Activate My Civic Profile</Link>}
       </div>
-      {!certificate.preview && certificate.loginName && <div className="certificate-account-handoff">
+      {!certificate.preview && certificate.loginName && certificate.activationToken && <div className="certificate-account-handoff">
         <span>Civic login prepared</span>
         <strong>{certificate.loginName}</strong>
-        <p>Use this login name, the certificate number printed above, and a password of your choosing to activate the private Civic Profile.</p>
+        <code>{certificate.activationToken}</code>
+        <p>Save this private one-time activation code before leaving this page. Use it with the civic login name and a password of your choosing. It is stored only as a secure digest, disappears after activation, and cannot be replaced by the public certificate number.</p>
       </div>}
       {!certificate.preview && <div className="ledger-preview">
         <header><span>Public Transparency Ledger · Recorded</span><h3>Civic standing now belongs to the living record.</h3></header>
         <div>
-          <span>{certificate.serial}</span>
+          <span>Certificate identifier withheld</span>
           <strong>{certificate.civicName}</strong>
           <span>{certificate.gregorianDate}</span>
           <b>Virtual symbolic citizen</b>
           <i>{certificate.score}% · Comprehension standard met</i>
         </div>
-        <p>The server reserved this unique certificate number and atomically entered the recognition in the citizen register and immutable Transparency Ledger. Contact information, personal statements, and individual answers were not retained. <Link href="/transparency-ledger">Open the public civic record.</Link></p>
+        <p>The server reserved a private certificate identifier and atomically entered the recognition in the citizen register and immutable Transparency Ledger. The public record contains the civic recognition without publishing authentication material, contact information, personal statements, or individual answers. <Link href="/transparency-ledger">Open the public civic record.</Link></p>
       </div>}
     </div>}
   </section>;

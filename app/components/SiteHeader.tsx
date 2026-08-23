@@ -12,6 +12,7 @@ export function SiteHeader({ minimal = false }: { minimal?: boolean }) {
       <nav aria-label="Society sections">
         <Link href="/utopian-society">Society</Link>
         <Link href="/?map=civic-portal">Civic Portal</Link>
+        <Link href="/citizens">Citizens</Link>
         <Link href="/login">Login</Link>
         <Link href="/blogs-essays">Blogs & Essays</Link>
         <EditorialNavLink />

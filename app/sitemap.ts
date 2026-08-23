@@ -17,6 +17,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: absoluteUrl("/lore"), changeFrequency: "weekly", priority: 0.9 },
     { url: absoluteUrl("/charters-codices"), changeFrequency: "monthly", priority: 0.8 },
     { url: absoluteUrl("/transparency-ledger"), changeFrequency: "daily", priority: 0.8 },
+    { url: absoluteUrl("/citizens"), changeFrequency: "daily", priority: 0.8 },
     { url: absoluteUrl("/proceedings-calendar"), changeFrequency: "daily", priority: 0.7 },
     { url: absoluteUrl("/system-review"), changeFrequency: "weekly", priority: 0.7 },
     { url: absoluteUrl("/citizens/adreto-nagdo-senoviros"), changeFrequency: "monthly", priority: 0.6 },

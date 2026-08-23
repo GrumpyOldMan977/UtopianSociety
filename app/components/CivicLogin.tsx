@@ -3,20 +3,12 @@
 import { FormEvent, useEffect, useState } from "react";
 import { CivicServiceError, loginCivicAccount } from "../lib/civic-ledger";
 
-const CERTIFICATE_PATTERN = /^USV-\d{4}-[A-F0-9]{12}$/;
-
-function formatCertificateNumber(value: string) {
-  const compact = value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 19);
-  const prefix = compact.slice(0, 3);
-  const year = compact.slice(3, 7);
-  const serial = compact.slice(7, 19);
-  return [prefix, year, serial].filter(Boolean).join("-");
-}
+const ACTIVATION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 
 export function CivicLogin() {
   const [loginName, setLoginName] = useState("");
   const [password, setPassword] = useState("");
-  const [certificateNumber, setCertificateNumber] = useState("");
+  const [activationToken, setActivationToken] = useState("");
   const [firstAccess, setFirstAccess] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -28,6 +20,12 @@ export function CivicLogin() {
       setFirstAccess(true);
       sessionStorage.removeItem("utopia.pendingLoginName");
     }
+    const pendingActivationToken = sessionStorage.getItem("utopia.pendingActivationToken");
+    if (pendingActivationToken) {
+      setActivationToken(pendingActivationToken);
+      setFirstAccess(true);
+      sessionStorage.removeItem("utopia.pendingActivationToken");
+    }
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -38,14 +36,14 @@ export function CivicLogin() {
       const result = await loginCivicAccount({
         loginName: loginName.trim(),
         password,
-        certificateNumber: firstAccess ? certificateNumber : undefined,
+        activationToken: firstAccess ? activationToken.trim() : undefined,
       });
       sessionStorage.setItem("utopia.civicSession", result.sessionToken);
       sessionStorage.setItem("utopia.civicId", result.civicId);
       sessionStorage.setItem("utopia.civicName", result.civicName);
       window.location.assign("/portal");
     } catch (cause) {
-      if (cause instanceof CivicServiceError && cause.code === "credential_upgrade_required") {
+      if (cause instanceof CivicServiceError && cause.code === "activation_token_required") {
         setFirstAccess(true);
       }
       setError(cause instanceof Error ? cause.message : "The civic login could not be completed.");
@@ -53,7 +51,7 @@ export function CivicLogin() {
     }
   }
 
-  const certificateValid = CERTIFICATE_PATTERN.test(certificateNumber);
+  const activationTokenValid = ACTIVATION_TOKEN_PATTERN.test(activationToken.trim());
   return <section className="civic-login-panel" aria-labelledby="civic-login-title">
     <div className="civic-login-intro">
       <span className="eyebrow">Private civic access</span>
@@ -66,27 +64,27 @@ export function CivicLogin() {
       <input id="civic-login-name" value={loginName} onChange={(event) => setLoginName(event.target.value)} autoComplete="username" required />
       <label htmlFor="civic-login-password">Password</label>
       <input id="civic-login-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={firstAccess ? "new-password" : "current-password"} minLength={10} maxLength={128} required />
-      <label className="civic-activation-choice"><input type="checkbox" checked={firstAccess} onChange={(event) => setFirstAccess(event.target.checked)} /><span>First sign-in or credential upgrade</span></label>
+      <label className="civic-activation-choice"><input type="checkbox" checked={firstAccess} onChange={(event) => setFirstAccess(event.target.checked)} /><span>First sign-in</span></label>
       {firstAccess && <>
-        <label htmlFor="civic-certificate-number">Immigration certificate number</label>
+        <label htmlFor="civic-activation-token">One-time activation code</label>
         <input
-          id="civic-certificate-number"
-          value={certificateNumber}
-          onChange={(event) => setCertificateNumber(formatCertificateNumber(event.target.value))}
-          placeholder="USV-2026-000000000000"
+          id="civic-activation-token"
+          value={activationToken}
+          onChange={(event) => setActivationToken(event.target.value.trim())}
+          placeholder="Private code issued with your civic login"
           autoComplete="off"
           inputMode="text"
-          pattern="USV-\d{4}-[A-Fa-f0-9]{12}"
-          minLength={21}
-          maxLength={21}
-          aria-describedby="civic-certificate-help"
+          pattern="[A-Za-z0-9_-]{32,128}"
+          minLength={32}
+          maxLength={128}
+          aria-describedby="civic-activation-help"
           required
         />
-        <small id="civic-certificate-help">Enter the complete 21-character certificate number: USV, the four-digit reference year, and 12 hexadecimal characters. It activates or upgrades the account once; the original password is never stored.</small>
+        <small id="civic-activation-help">Use the private one-time code issued with your civic login name. A certificate number never activates, restores, or recovers an account.</small>
       </>}
       {error && <p className="portal-message is-error" role="alert">{error}</p>}
-      <button type="submit" disabled={busy || !loginName.trim() || password.length < 10 || (firstAccess && !certificateValid)}>{busy ? "Verifying…" : firstAccess ? "Activate or Upgrade My Civic Profile" : "Open My Civic Profile"}</button>
-      <small>First activation and one-time credential upgrades also require the Immigration certificate number. Afterward, use only your civic login name and password. Your private records are available only through your authenticated civic session.</small>
+      <button type="submit" disabled={busy || !loginName.trim() || password.length < 10 || (firstAccess && !activationTokenValid)}>{busy ? "Verifying…" : firstAccess ? "Activate My Civic Profile" : "Open My Civic Profile"}</button>
+      <small>First activation requires the private one-time code delivered at naturalization. Afterward, use only your civic login name and password. Public certificate identifiers are never accepted as authentication.</small>
     </form>
   </section>;
 }

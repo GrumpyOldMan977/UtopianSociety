@@ -139,6 +139,7 @@ export function PublicCivicProfile({
         </article>
       </div>
       <nav aria-label="Public profile destinations">
+        <Link href="/citizens">Citizen Directory</Link>
         <Link href="/login">Open My Civic Profile</Link>
         <Link href="/transparency-ledger">Open the public Ledger</Link>
       </nav>

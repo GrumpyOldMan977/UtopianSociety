@@ -15,7 +15,7 @@ export default function AdretoPublicProfile() {
     <SiteHeader />
     <nav className="citizen-portal-breadcrumb" aria-label="Breadcrumb">
       <Link href="/">The Utopian Society</Link><span>/</span>
-      <Link href="/?map=civic-portal">Civic Portal</Link><span>/</span><b>Public Profile</b>
+      <Link href="/citizens">Citizens</Link><span>/</span><b>Public Profile</b>
     </nav>
     <PublicCivicProfile slug={slug} />
   </main>;
