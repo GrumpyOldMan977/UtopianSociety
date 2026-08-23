@@ -1,0 +1,40 @@
+{
+  "releaseKey": "site-release:2026-08-23:cloudflare-native-ledger-automation",
+  "entries": [
+    {
+      "eventKey": "site-release:6df8372:cloudflare-native-ledger-automation",
+      "eventType": "platform_release",
+      "category": "platform",
+      "title": "Transparency Ledger release automation made Cloudflare-native",
+      "summary": "Transparency Ledger release ingestion no longer depends on GitHub or any external repository API. Release manifests now enter an isolated Cloudflare R2 inbox, are validated and appended idempotently to the authoritative D1 ledger, and are archived in R2 after successful processing. The Worker records each synchronization attempt, outcome, and last archived manifest in D1, while the source repository remains an optional public inspection mirror rather than a runtime dependency.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "Transparency Ledger Release Automation",
+      "subjectRef": "release:v4-cloudflare-native-ledger-automation",
+      "occurredAt": "2026-08-23T21:31:01.053Z",
+      "utopianDate": "Conceptday, Aura 17, Utopian Year 1",
+      "gregorianDate": "August 23, 2026",
+      "sourceLabel": "The Utopian Society Transparency Ledger",
+      "sourceUrl": "https://utopiansocietycorpus.org/transparency-ledger",
+      "metadata": {
+        "version": "4.0.1",
+        "commit": "6df8372ddfc3c7152a052bf73114487ededc0c41",
+        "implementationCommit": "de3ce210a8eaaa2c7bdc507141e6a7f607f2d67c",
+        "workerVersion": "ba6b88ac-bedd-4fe9-8d76-3420d1e49b27",
+        "migration": "0019_v4_cloudflare_release_inbox.sql",
+        "releaseTests": 72,
+        "runtimeSource": "Cloudflare R2 release inbox",
+        "authoritativeLedger": "Cloudflare D1",
+        "repositoryRole": "Optional public inspection mirror only",
+        "changes": [
+          "Removed GitHub Contents API polling from the civic Worker",
+          "Added a bounded Cloudflare R2 release-manifest inbox",
+          "Preserved idempotent append-only D1 registration by event key",
+          "Archived successfully synchronized manifests inside R2",
+          "Recorded synchronization attempts, success, failure, and cursor state in D1",
+          "Kept WordPress publication synchronization independent from release ingestion",
+          "Updated the release-registration helper to enqueue through Wrangler without a ledger administration secret"
+        ]
+      }
+    }
+  ]
+}
