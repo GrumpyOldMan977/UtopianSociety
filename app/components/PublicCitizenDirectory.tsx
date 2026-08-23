@@ -4,36 +4,24 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   getPublicCitizenDirectory,
-  publicProfileAvatarUrl,
   type PublicCitizenDirectoryEntry,
 } from "../lib/civic-ledger";
 
-function titleCase(value: string) {
-  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
+function CitizenDirectoryEntry({ citizen }: { citizen: PublicCitizenDirectoryEntry }) {
+  const position = citizen.civicTitle && citizen.civicTitle !== "Citizen"
+    ? citizen.civicTitle
+    : null;
 
-function initials(civicName: string) {
-  return civicName.split(/\s+/).map((part) => part[0]).slice(0, 3).join("");
-}
-
-function CitizenDirectoryCard({ citizen }: { citizen: PublicCitizenDirectoryEntry }) {
-  const [avatarAvailable, setAvatarAvailable] = useState(citizen.hasAvatar);
   return <article className="citizen-directory-card">
-    <Link className={`citizen-directory-portrait${avatarAvailable ? " has-image" : ""}`} href={`/citizens/${citizen.slug}`} aria-label={`Open ${citizen.civicName}'s public profile`}>
-      {avatarAvailable
-        ? <img src={publicProfileAvatarUrl(citizen.slug)} alt="" onError={() => setAvatarAvailable(false)} />
-        : <span aria-hidden="true">{initials(citizen.civicName)}</span>}
-    </Link>
-    <div>
-      <span>{citizen.civicTitle || "Citizen"}</span>
+    <div className="citizen-directory-identity">
       <h2><Link href={`/citizens/${citizen.slug}`}>{citizen.civicName}</Link></h2>
-      <p>{citizen.publicBio || "This citizen has chosen a public profile and has not yet written a public biography."}</p>
-      <dl>
-        <div><dt>Standing</dt><dd>{titleCase(citizen.civicStanding)}</dd></div>
-        <div><dt>Contribution</dt><dd>{citizen.primaryContribution}</dd></div>
-      </dl>
-      <Link className="citizen-directory-open" href={`/citizens/${citizen.slug}`}>Open public profile</Link>
+      {position && <p className="citizen-directory-position">{position}</p>}
     </div>
+    <Link
+      className="citizen-directory-open"
+      href={`/citizens/${citizen.slug}`}
+      aria-label={`Open ${citizen.civicName}'s public profile`}
+    >View profile</Link>
   </article>;
 }
 
@@ -76,6 +64,6 @@ export function PublicCitizenDirectory() {
       <h2 id="citizen-directory-list-title">{citizens.length === 1 ? "One public civic profile" : `${citizens.length} public civic profiles`}</h2>
       <p>Every profile here is included because its citizen selected broad public visibility. Certificate identifiers and private Civic Profile records are never part of this directory.</p>
     </header>
-    <div>{citizens.map((citizen) => <CitizenDirectoryCard citizen={citizen} key={citizen.slug} />)}</div>
+    <div>{citizens.map((citizen) => <CitizenDirectoryEntry citizen={citizen} key={citizen.slug} />)}</div>
   </section>;
 }
