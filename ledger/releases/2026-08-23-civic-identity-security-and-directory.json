@@ -1,0 +1,41 @@
+{
+  "releaseKey": "site-release:2026-08-23:civic-identity-security-and-directory",
+  "entries": [
+    {
+      "eventKey": "site-release:9210d4f:civic-identity-security-and-directory",
+      "eventType": "security_hardening",
+      "category": "platform",
+      "title": "Civic identity security hardened and public Citizen Directory opened",
+      "summary": "Following a citizen-led security review, certificate identifiers were removed from public civic APIs and are no longer accepted as proof for account activation, restoration, or credential changes. New civic accounts instead receive a separate one-time activation code whose plaintext is shown only during issuance and whose digest is consumed atomically at first sign-in. A new Citizen Directory now lists only profiles whose citizens explicitly selected broad public visibility.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "Civic Identity and Public Profiles",
+      "subjectRef": "release:v3-civic-identity-security",
+      "occurredAt": "2026-08-23T05:21:18.842Z",
+      "utopianDate": "Conceptday, Aura 17, Utopian Year 1",
+      "gregorianDate": "August 23, 2026",
+      "sourceLabel": "The Utopian Society Citizen Directory",
+      "sourceUrl": "https://utopiansocietycorpus.org/citizens",
+      "metadata": {
+        "version": "3.0.2",
+        "commit": "9210d4fa2187c851e0c3cb3b1c0c41691a09ac3c",
+        "workerVersion": "021d7fe1-05ce-4102-87b6-de9e461a90a2",
+        "sitesVersion": 25,
+        "releaseTests": 70,
+        "publicCertificateIdentifiers": false,
+        "certificateAuthentication": false,
+        "firstActivation": "Separate random one-time code retained only as a digest and consumed atomically",
+        "credentialRecovery": "Administrator-assisted when existing password verification is unavailable",
+        "directoryVisibility": "Explicit public opt-in only",
+        "changes": [
+          "Certificate identifiers redacted from population, citizen-register, and ledger API responses",
+          "Certificate identifiers rejected as activation and recovery proof",
+          "New one-time activation codes separated from civic certificates",
+          "Activation code consumption made single-use under concurrent requests",
+          "Public Citizen Directory added at /citizens",
+          "Population ticker and Citizen Register linked to opted-in public profiles",
+          "Private portal and editorial analytics authorization preserved server-side"
+        ]
+      }
+    }
+  ]
+}
