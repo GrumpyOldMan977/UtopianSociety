@@ -1,0 +1,39 @@
+{
+  "releaseKey": "site-release:2026-08-23:production-learning-assessment-routing-repair",
+  "entries": [
+    {
+      "eventKey": "site-release:44e8590:production-learning-assessment-routing-repair",
+      "eventType": "platform_release",
+      "category": "platform",
+      "title": "Production Learning assessment routing repaired",
+      "summary": "The private Learning portal was repaired after its production assessment route fell back to a development-only loopback address and Cloudflare rejected the request with error 1003. The Sites runtime now connects explicitly to the civic Worker, production routes refuse local-only addresses, and non-JSON upstream failures are converted into clear structured errors instead of exposing a browser parsing exception. The failed request generated no assessment, changed no Learning record, and consumed no AI allowance. All 66 release tests passed before publication.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "Private Learning Assessment",
+      "subjectRef": "release:v3-learning-assessment-routing-repair",
+      "occurredAt": "2026-08-23T04:33:11.000Z",
+      "utopianDate": "Conceptday, Aura 17, Utopian Year 1",
+      "gregorianDate": "August 23, 2026",
+      "sourceLabel": "The Utopian Society private Learning portal",
+      "sourceUrl": "https://utopiansocietycorpus.org/portal",
+      "metadata": {
+        "version": "3.0.2",
+        "commit": "44e8590088df125235b5efa72e50c7db3bc13ec7",
+        "workerVersion": "9dbd93b6-e24a-4271-bd02-279d990c64d0",
+        "sitesVersion": 24,
+        "environmentRevision": 1,
+        "routingRepair": "Production Sites route explicitly connected to the civic Worker",
+        "failureBoundary": "Development loopback addresses rejected outside development",
+        "errorBoundary": "Non-JSON upstream responses converted to structured civic errors",
+        "releaseTests": 66,
+        "changes": [
+          "Configured the production civic-service address in Sites",
+          "Restricted local loopback fallback to development",
+          "Added server-side non-JSON response protection",
+          "Added client-side structured parsing protection",
+          "Added a production-configuration regression test",
+          "Verified the custom-domain route reaches the civic Worker"
+        ]
+      }
+    }
+  ]
+}
