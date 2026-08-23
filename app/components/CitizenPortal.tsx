@@ -282,17 +282,6 @@ export function CitizenPortal() {
     }
   }
 
-  async function chooseAvatar(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) {
-      setError("Choose a valid JPG, PNG, or WebP image no larger than 10 MB.");
-      return;
-    }
-    await run("avatar", () => uploadProfileAvatar(file), "Profile photograph stored in the private local civic record.");
-  }
-
   async function uploadRecord(
     event: ChangeEvent<HTMLInputElement>,
     domain: "learning" | "healing" | "harmony",
@@ -486,7 +475,7 @@ export function CitizenPortal() {
           <button type="button" onClick={() => void logout()}>Log out</button>
         </div>
       </div>
-      <div className="citizen-avatar-editor">
+      <div className="citizen-avatar-display">
         <div
           className={`citizen-avatar${avatarUrl ? " has-image" : ""}`}
           style={avatarUrl ? { backgroundImage: `url(${avatarUrl})` } : undefined}
@@ -494,10 +483,6 @@ export function CitizenPortal() {
         >
           {!avatarUrl && <span>{profile.civicName.split(/\s+/).map((part) => part[0]).slice(0, 3).join("")}</span>}
         </div>
-        <label htmlFor="citizen-avatar-input">{avatarUrl ? "Replace photo" : "Add profile photo"}</label>
-        <input id="citizen-avatar-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void chooseAvatar(event)} />
-        {avatarUrl && <button className="avatar-delete" type="button" onClick={() => void run("avatar-delete", deleteProfileAvatar, "Profile photograph removed.")}>Remove</button>}
-        <small>JPG, PNG, or WebP · 10 MB maximum · shown publicly only when profile visibility permits</small>
       </div>
     </section>
     {identitySettingsOpen && <PrivateIdentitySettings
@@ -505,6 +490,7 @@ export function CitizenPortal() {
       civicTitle={profile.civicTitle || ""}
       publicBio={profile.publicBio}
       profileVisibility={profile.profileVisibility}
+      avatarUrl={avatarUrl}
       textSize={textSize}
       onTextSizeChange={(value) => {
         setTextSize(value);
@@ -984,15 +970,310 @@ export function CitizenPortal() {
   </>;
 }
 
+const CROPPED_AVATAR_SIZE = 512;
+
+type CropImageSize = { width: number; height: number };
+type CropOffset = { x: number; y: number };
+
+function cropGeometry(image: CropImageSize, cropSize: number, zoom: number) {
+  const baseScale = Math.max(cropSize / image.width, cropSize / image.height);
+  const scale = baseScale * zoom;
+  const width = image.width * scale;
+  const height = image.height * scale;
+  return {
+    width,
+    height,
+    maxX: Math.max(0, (width - cropSize) / 2),
+    maxY: Math.max(0, (height - cropSize) / 2),
+  };
+}
+
+function clampCropOffset(offset: CropOffset, geometry: ReturnType<typeof cropGeometry>): CropOffset {
+  return {
+    x: Math.max(-geometry.maxX, Math.min(geometry.maxX, offset.x)),
+    y: Math.max(-geometry.maxY, Math.min(geometry.maxY, offset.y)),
+  };
+}
+
+function loadCropImage(source: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("That image could not be opened. Choose another JPG, PNG, or WebP file."));
+    image.src = source;
+  });
+}
+
+function canvasBlob(canvas: HTMLCanvasElement, type: string, quality?: number) {
+  return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+function ProfilePhotoSettings({
+  civicName,
+  avatarUrl,
+  onSaved,
+}: {
+  civicName: string;
+  avatarUrl: string;
+  onSaved: () => Promise<void>;
+}) {
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [sourceSize, setSourceSize] = useState<CropImageSize>({ width: 1, height: 1 });
+  const [cropSize, setCropSize] = useState(320);
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState<CropOffset>({ x: 0, y: 0 });
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const cropStage = useRef<HTMLDivElement | null>(null);
+  const sourceUrlRef = useRef("");
+  const drag = useRef<{ pointerId: number; x: number; y: number; offset: CropOffset } | null>(null);
+  const geometry = cropGeometry(sourceSize, cropSize, zoom);
+  const initials = civicName.split(/\s+/).map((part) => part[0]).slice(0, 3).join("");
+
+  function discardSource() {
+    if (sourceUrlRef.current) URL.revokeObjectURL(sourceUrlRef.current);
+    sourceUrlRef.current = "";
+    setSourceUrl("");
+    setZoom(1);
+    setOffset({ x: 0, y: 0 });
+    drag.current = null;
+  }
+
+  useEffect(() => () => {
+    if (sourceUrlRef.current) URL.revokeObjectURL(sourceUrlRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!sourceUrl || !cropStage.current) return;
+    const stage = cropStage.current;
+    const measure = () => setCropSize(Math.max(1, stage.clientWidth));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [sourceUrl]);
+
+  useEffect(() => {
+    setOffset((current) => clampCropOffset(current, cropGeometry(sourceSize, cropSize, zoom)));
+  }, [sourceSize, cropSize, zoom]);
+
+  async function chooseSource(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setMessage("");
+    setError("");
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      setError("Choose a valid JPG, PNG, or WebP image no larger than 10 MB.");
+      return;
+    }
+    const nextUrl = URL.createObjectURL(file);
+    try {
+      const image = await loadCropImage(nextUrl);
+      if (sourceUrlRef.current) URL.revokeObjectURL(sourceUrlRef.current);
+      sourceUrlRef.current = nextUrl;
+      setSourceSize({ width: image.naturalWidth, height: image.naturalHeight });
+      setZoom(1);
+      setOffset({ x: 0, y: 0 });
+      setSourceUrl(nextUrl);
+    } catch (cause) {
+      URL.revokeObjectURL(nextUrl);
+      setError(cause instanceof Error ? cause.message : "That image could not be opened.");
+    }
+  }
+
+  function moveCrop(event: React.PointerEvent<HTMLDivElement>) {
+    const current = drag.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    setOffset(clampCropOffset({
+      x: current.offset.x + event.clientX - current.x,
+      y: current.offset.y + event.clientY - current.y,
+    }, geometry));
+  }
+
+  function endCropMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (drag.current?.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    drag.current = null;
+  }
+
+  async function saveCrop() {
+    if (!sourceUrl) return;
+    setBusy(true);
+    setMessage("");
+    setError("");
+    try {
+      const image = await loadCropImage(sourceUrl);
+      const canvas = document.createElement("canvas");
+      canvas.width = CROPPED_AVATAR_SIZE;
+      canvas.height = CROPPED_AVATAR_SIZE;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("This browser could not prepare the cropped profile photo.");
+      const outputScale = CROPPED_AVATAR_SIZE / cropSize;
+      context.drawImage(
+        image,
+        ((cropSize - geometry.width) / 2 + offset.x) * outputScale,
+        ((cropSize - geometry.height) / 2 + offset.y) * outputScale,
+        geometry.width * outputScale,
+        geometry.height * outputScale,
+      );
+      const blob = await canvasBlob(canvas, "image/webp", 0.9) || await canvasBlob(canvas, "image/png");
+      if (!blob) throw new Error("This browser could not create the cropped profile photo.");
+      const extension = blob.type === "image/webp" ? "webp" : "png";
+      await uploadProfileAvatar(new File([blob], `civic-profile-photo.${extension}`, {
+        type: blob.type,
+        lastModified: Date.now(),
+      }));
+      await onSaved();
+      discardSource();
+      setMessage("The cropped profile photo is saved.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The cropped profile photo could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removePhoto() {
+    setBusy(true);
+    setMessage("");
+    setError("");
+    try {
+      await deleteProfileAvatar();
+      await onSaved();
+      setMessage("The profile photo has been removed.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The profile photo could not be removed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <section className="profile-photo-settings" aria-labelledby="profile-photo-settings-title">
+    <header>
+      <div>
+        <span className="eyebrow">Profile photograph</span>
+        <h3 id="profile-photo-settings-title">Choose the framing the public will see</h3>
+      </div>
+      <p>The source image stays in this browser while you edit. Only the finished 512 × 512 crop is uploaded.</p>
+    </header>
+    <input
+      ref={fileInput}
+      className="profile-photo-file sr-only"
+      type="file"
+      accept="image/jpeg,image/png,image/webp"
+      aria-label="Choose a profile photo to crop"
+      onChange={(event) => void chooseSource(event)}
+    />
+    {sourceUrl ? <div className="profile-photo-crop-workspace">
+      <div
+        ref={cropStage}
+        className="profile-photo-crop-stage"
+        role="img"
+        aria-label="Profile photo crop preview. Drag the image to position it inside the circular frame."
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, offset };
+        }}
+        onPointerMove={moveCrop}
+        onPointerUp={endCropMove}
+        onPointerCancel={endCropMove}
+      >
+        {/* The selected source is local-only and exists solely inside this authenticated crop tool. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={sourceUrl}
+          alt=""
+          draggable={false}
+          style={{
+            width: `${geometry.width}px`,
+            height: `${geometry.height}px`,
+            transform: `translate(-50%, -50%) translate(${offset.x}px, ${offset.y}px)`,
+          }}
+        />
+        <i className="profile-photo-crop-mask" aria-hidden="true" />
+      </div>
+      <div className="profile-photo-crop-controls">
+        <p>Drag the portrait directly, or use the controls for precise framing.</p>
+        <label>Zoom
+          <input
+            type="range"
+            min="1"
+            max="3"
+            step="0.01"
+            value={zoom}
+            onChange={(event) => setZoom(Number(event.target.value))}
+          />
+        </label>
+        <label>Horizontal position
+          <input
+            type="range"
+            min={-geometry.maxX}
+            max={geometry.maxX}
+            step="1"
+            value={offset.x}
+            disabled={geometry.maxX === 0}
+            onChange={(event) => setOffset((current) => ({ ...current, x: Number(event.target.value) }))}
+          />
+        </label>
+        <label>Vertical position
+          <input
+            type="range"
+            min={-geometry.maxY}
+            max={geometry.maxY}
+            step="1"
+            value={offset.y}
+            disabled={geometry.maxY === 0}
+            onChange={(event) => setOffset((current) => ({ ...current, y: Number(event.target.value) }))}
+          />
+        </label>
+        <div className="profile-photo-actions">
+          <button type="button" disabled={busy} onClick={() => void saveCrop()}>{busy ? "Saving…" : "Save cropped photo"}</button>
+          <button type="button" disabled={busy} onClick={discardSource}>Cancel crop</button>
+          <button type="button" disabled={busy} onClick={() => fileInput.current?.click()}>Choose another image</button>
+        </div>
+      </div>
+    </div> : <div className="profile-photo-current">
+      <div
+        className={`profile-photo-current-avatar${avatarUrl ? " has-image" : ""}`}
+        style={avatarUrl ? { backgroundImage: `url(${avatarUrl})` } : undefined}
+        aria-label={avatarUrl ? `${civicName}'s current profile photo` : "No profile photo selected"}
+      >
+        {!avatarUrl && <span>{initials}</span>}
+      </div>
+      <div>
+        <strong>{avatarUrl ? "Current profile photo" : "No profile photo selected"}</strong>
+        <p>Choose a JPG, PNG, or WebP image up to 10 MB, then position and zoom it before saving.</p>
+        <div className="profile-photo-actions">
+          <button type="button" disabled={busy} onClick={() => fileInput.current?.click()}>{avatarUrl ? "Choose new photo" : "Choose a photo"}</button>
+          {avatarUrl && <button className="profile-photo-remove" type="button" disabled={busy} onClick={() => void removePhoto()}>{busy ? "Removing…" : "Remove photo"}</button>}
+        </div>
+      </div>
+    </div>}
+    {error && <div className="portal-message is-error" role="alert">{error}</div>}
+    {message && <div className="portal-message is-success" role="status">{message}</div>}
+  </section>;
+}
+
 function PublicProfileSettings({
+  civicName,
   civicTitle,
   publicBio,
   profileVisibility,
+  avatarUrl,
   onSaved,
 }: {
+  civicName: string;
   civicTitle: string;
   publicBio: string;
   profileVisibility: string;
+  avatarUrl: string;
   onSaved: () => Promise<void>;
 }) {
   const [title, setTitle] = useState(civicTitle);
@@ -1031,6 +1312,7 @@ function PublicProfileSettings({
         <h2 id="public-profile-settings-title">Shape what the public learns about you</h2>
       </div>
     </header>
+    <ProfilePhotoSettings civicName={civicName} avatarUrl={avatarUrl} onSaved={onSaved} />
     <form onSubmit={save}>
       <label>Public role or title
         <input value={title} maxLength={100} onChange={(event) => setTitle(event.target.value)} />
@@ -1064,6 +1346,7 @@ function PrivateIdentitySettings({
   civicTitle,
   publicBio,
   profileVisibility,
+  avatarUrl,
   textSize,
   onTextSizeChange,
   onClose,
@@ -1073,6 +1356,7 @@ function PrivateIdentitySettings({
   civicTitle: string;
   publicBio: string;
   profileVisibility: string;
+  avatarUrl: string;
   textSize: PortalTextSize;
   onTextSizeChange: (value: PortalTextSize) => void;
   onClose: () => void;
@@ -1264,9 +1548,11 @@ function PrivateIdentitySettings({
       </fieldset>
     </section>
     <PublicProfileSettings
+      civicName={civicName}
       civicTitle={civicTitle}
       publicBio={publicBio}
       profileVisibility={profileVisibility}
+      avatarUrl={avatarUrl}
       onSaved={onSaved}
     />
   </section>;

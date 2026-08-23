@@ -79,3 +79,20 @@ test("the public citizen directory lists only explicit public visibility", async
   assert.match(component, /publicProfileAvatarUrl/);
   assert.doesNotMatch(component, /citizen\.publicBio|citizen\.primaryContribution|citizen\.civicStanding/);
 });
+
+test("profile photographs are framed in authenticated profile settings before upload", async () => {
+  const portal = await source("app/components/CitizenPortal.tsx");
+  const hero = section(portal, '<section className="citizen-identity"', "{identitySettingsOpen &&");
+  const cropper = section(portal, "function ProfilePhotoSettings", "function PublicProfileSettings");
+  const publicSettings = section(portal, "function PublicProfileSettings", "function PrivateIdentitySettings");
+  const styles = await source("app/citizen-portal.css");
+
+  assert.doesNotMatch(hero, /type="file"|Replace photo|deleteProfileAvatar|uploadProfileAvatar/);
+  assert.match(cropper, /const canvas = document\.createElement\("canvas"\)/);
+  assert.match(cropper, /canvas\.width = CROPPED_AVATAR_SIZE/);
+  assert.match(cropper, /uploadProfileAvatar\(new File/);
+  assert.match(cropper, /Only the finished 512 × 512 crop is uploaded/);
+  assert.match(publicSettings, /<ProfilePhotoSettings/);
+  assert.match(styles, /\.profile-photo-crop-mask/);
+  assert.match(styles, /touch-action:none/);
+});
