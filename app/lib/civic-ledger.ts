@@ -611,6 +611,19 @@ export class CivicServiceError extends Error {
   }
 }
 
+async function readCivicJson<T>(response: Response, fallbackMessage: string) {
+  const body = await response.text();
+  try {
+    return JSON.parse(body) as T & { error?: string; code?: string };
+  } catch {
+    throw new CivicServiceError(
+      fallbackMessage,
+      "civic_service_response_invalid",
+      response.ok ? 502 : response.status,
+    );
+  }
+}
+
 async function civicRequest<T>(path: string, init?: RequestInit, authenticated = false) {
   const sessionToken = authenticated && typeof window !== "undefined"
     ? sessionStorage.getItem("utopia.civicSession")
@@ -626,7 +639,10 @@ async function civicRequest<T>(path: string, init?: RequestInit, authenticated =
     },
     cache: "no-store",
   });
-  const result = await response.json() as T & { error?: string; code?: string };
+  const result = await readCivicJson<T>(
+    response,
+    "The civic service returned an unreadable response. No civic record was changed.",
+  );
   if (!response.ok) {
     throw new CivicServiceError(
       result.error || "The civic service could not complete this request.",
@@ -915,8 +931,17 @@ export function requestLearningAssessment(input: {
     body: JSON.stringify(input),
     cache: "no-store",
   }).then(async (response) => {
-    const result = await response.json() as LearningAssessmentResult & { error?: string };
-    if (!response.ok) throw new Error(result.error || "The automated Learning assessment could not be completed.");
+    const result = await readCivicJson<LearningAssessmentResult>(
+      response,
+      "The automated Learning service returned an unreadable response. No Learning record was changed.",
+    );
+    if (!response.ok) {
+      throw new CivicServiceError(
+        result.error || "The automated Learning assessment could not be completed.",
+        result.code,
+        response.status,
+      );
+    }
     return result;
   });
 }

@@ -2,15 +2,13 @@ import assert from "node:assert/strict";
 import { access, readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
-async function render(pathname = "/") {
+async function requestWorker(pathname = "/", init = {}) {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}-${pathname}`);
   const { default: worker } = await import(workerUrl.href);
 
   return worker.fetch(
-    new Request(`http://localhost${pathname}`, {
-      headers: { accept: "text/html" },
-    }),
+    new Request(`http://localhost${pathname}`, init),
     {
       ASSETS: {
         fetch: async () => new Response("Not found", { status: 404 }),
@@ -22,6 +20,35 @@ async function render(pathname = "/") {
     },
   );
 }
+
+async function render(pathname = "/") {
+  return requestWorker(pathname, { headers: { accept: "text/html" } });
+}
+
+test("Learning assessment fails safely when its production civic service is not configured", async () => {
+  const response = await requestWorker("/api/learning/evaluate", {
+    method: "POST",
+    headers: {
+      authorization: "Bearer regression-test-session",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ documentIds: ["document-test"], goalText: "", consent: true }),
+  });
+  assert.equal(response.status, 503);
+  assert.match(response.headers.get("content-type") ?? "", /^application\/json\b/i);
+  assert.deepEqual(await response.json(), {
+    error: "The civic Learning service is not configured. No Learning record was changed.",
+    code: "civic_service_unconfigured",
+  });
+
+  const civicClient = await readFile(new URL("../app/lib/civic-ledger.ts", import.meta.url), "utf8");
+  const assessmentClient = civicClient.slice(
+    civicClient.indexOf("export function requestLearningAssessment"),
+    civicClient.indexOf("export function requestUsuEnrollment"),
+  );
+  assert.match(assessmentClient, /readCivicJson/);
+  assert.doesNotMatch(assessmentClient, /response\.json\(\)/);
+});
 
 test("server-renders the Utopian Society frontispiece", async () => {
   const response = await render();

@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
+import { serverCivicLedgerApi } from "../../../lib/server-civic-ledger";
 
-const LOCAL_CIVIC_SERVICE = "http://127.0.0.1:8788";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -8,14 +8,20 @@ type StreamingRequestInit = RequestInit & {
   duplex?: "half";
 };
 
-function civicServiceBase() {
-  return (process.env.CIVIC_LEDGER_INTERNAL_API || LOCAL_CIVIC_SERVICE).replace(/\/$/, "");
-}
-
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
+  const civicServiceBase = serverCivicLedgerApi();
+  if (!civicServiceBase) {
+    return Response.json(
+      {
+        error: "The civic service is not configured. No civic record was changed.",
+        code: "civic_service_unconfigured",
+      },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   const sourceUrl = new URL(request.url);
-  const targetUrl = new URL(`${civicServiceBase()}/${path.map(encodeURIComponent).join("/")}`);
+  const targetUrl = new URL(`${civicServiceBase}/${path.map(encodeURIComponent).join("/")}`);
   targetUrl.search = sourceUrl.search;
 
   const headers = new Headers();
