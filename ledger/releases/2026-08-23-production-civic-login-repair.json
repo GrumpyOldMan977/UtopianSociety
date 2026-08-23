@@ -1,0 +1,39 @@
+{
+  "releaseKey": "site-release:2026-08-23:production-civic-login-repair",
+  "entries": [
+    {
+      "eventKey": "site-release:714f11f:production-civic-login-repair",
+      "eventType": "platform_release",
+      "category": "platform",
+      "title": "Production civic login compatibility repaired",
+      "summary": "Production civic login was repaired after Cloudflare's PBKDF2 runtime limit proved incompatible with the stronger iteration count retained by the migrated Founder account. The portal now provides a certificate-backed, one-time credential upgrade that securely re-derives the existing password at the supported iteration count without storing or exposing plaintext credentials. The account remains private, Editorial Studio and analytics remain restricted server-side to the Founder's authorized civic profile, and all 65 release tests passed before publication.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "Private Civic Login",
+      "subjectRef": "release:v3-civic-login-repair",
+      "occurredAt": "2026-08-23T00:30:31.000Z",
+      "utopianDate": "Conceptday, Aura 17, Utopian Year 1",
+      "gregorianDate": "August 23, 2026",
+      "sourceLabel": "The Utopian Society civic login",
+      "sourceUrl": "https://utopiansocietycorpus.org/login",
+      "metadata": {
+        "version": "3.0.1",
+        "commit": "714f11f05a12925a89eaa2731d3e64d7c3ecf50d",
+        "workerVersion": "9dbd93b6-e24a-4271-bd02-279d990c64d0",
+        "sitesVersion": 23,
+        "credentialUpgrade": "Certificate-backed one-time PBKDF2 compatibility rekey",
+        "passwordStorage": "PBKDF2 derived hash only; plaintext never retained",
+        "editorialAuthority": "Founder civic profile only",
+        "analyticsAuthority": "Founder civic profile only",
+        "releaseTests": 65,
+        "changes": [
+          "Cloudflare PBKDF2 iteration incompatibility diagnosed",
+          "Production login no longer fails with a Worker runtime exception",
+          "One-time certificate-backed credential upgrade added",
+          "Existing password preserved through secure re-derivation",
+          "Editorial Studio and analytics remain Founder-only",
+          "Updated Worker and public login interface published"
+        ]
+      }
+    }
+  ]
+}
