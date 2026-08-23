@@ -1,0 +1,41 @@
+{
+  "releaseKey": "site-release:2026-08-23:managed-civic-wire-source-manager",
+  "entries": [
+    {
+      "eventKey": "site-release:f7cb09b:managed-civic-wire-source-manager",
+      "eventType": "platform_release",
+      "category": "platform",
+      "title": "Civic Wire made fully manageable and source-aware",
+      "summary": "Editorial Studio now presents the complete live Civic Wire hierarchy, a manual Notice Library, and a Source Manager for built-in and custom RSS or Atom sources. Founder-authorized controls support editing, scheduling, ordering, visual treatments, pausing, archiving, restoring, refreshing, and suppressing individual feed items. Every human content or settings change appends an actor-attributed Transparency Ledger event from the authenticated civic identity, including archival, while automatic source refreshes remain quiet. External feeds are restricted to public HTTPS endpoints, bounded, sanitized, and cached in Cloudflare D1. All 73 release tests passed before publication.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "Managed Civic Wire and Source Manager",
+      "subjectRef": "release:v4-managed-civic-wire-source-manager",
+      "occurredAt": "2026-08-23T23:47:19.059Z",
+      "utopianDate": "Conceptday, Aura 17, Utopian Year 1",
+      "gregorianDate": "August 23, 2026",
+      "sourceLabel": "The Utopian Society Transparency Ledger",
+      "sourceUrl": "https://utopiansocietycorpus.org/transparency-ledger",
+      "metadata": {
+        "version": "4.1.0",
+        "implementationCommit": "f7cb09bb8f7a12be5e2a27252e3055002c64861b",
+        "workerVersion": "39c5812f-24fc-4b28-9b1e-4efd4e3c186c",
+        "sitesVersion": 35,
+        "sitesDeployment": "appgdep_6a8b85bdef2481919a3bd5abf01678aa",
+        "migration": "0020_v4_ticker_source_manager.sql",
+        "releaseTests": 73,
+        "ledgerAttribution": "Authenticated civic identity for every human ticker change",
+        "automaticRefreshPolicy": "Source refreshes update cached content without ledger noise",
+        "changes": [
+          "Added a Current Civic Wire table showing the exact public rotation hierarchy",
+          "Added a Notice Library for creating, editing, scheduling, pausing, archiving, and restoring manual notices",
+          "Added a Source Manager for built-in sources and custom RSS or Atom feeds",
+          "Added priority ranks, within-rank ordering, destinations, and accessible visual treatments",
+          "Added source health, refresh controls, and suppression or restoration of individual feed items",
+          "Attributed every human ticker mutation and archival event to the authenticated civic identity in the Transparency Ledger",
+          "Kept automatic feed refreshes out of the ledger to avoid repetitive machine-generated entries",
+          "Restricted custom feeds to bounded and sanitized public HTTPS retrieval with D1 caching"
+        ]
+      }
+    }
+  ]
+}
