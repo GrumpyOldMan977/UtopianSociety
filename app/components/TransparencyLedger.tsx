@@ -15,6 +15,8 @@ type LedgerState = {
   entries: LedgerEntry[];
 };
 
+const LEDGER_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+
 function categoryLabel(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -62,7 +64,7 @@ export function TransparencyLedger() {
       }
     };
     void load();
-    const interval = window.setInterval(() => void load(), 30_000);
+    const interval = window.setInterval(() => void load(), LEDGER_REFRESH_INTERVAL_MS);
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") void load();
     };
@@ -146,7 +148,7 @@ export function TransparencyLedger() {
           <span aria-hidden="true" />
           {error
             ? "Live refresh paused · showing the last verified record"
-            : `Live record · refreshed every 30 seconds${lastSyncedAt ? ` · last checked ${lastSyncedAt.toISOString().slice(11, 19)} UTC` : ""}`}
+            : `Live record · refreshed every 5 minutes${lastSyncedAt ? ` · last checked ${lastSyncedAt.toISOString().slice(11, 19)} UTC` : ""}`}
         </p>
       </header>
       <ol tabIndex={0} aria-label="Scrollable Transparency Ledger entries">
