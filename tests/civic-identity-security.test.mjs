@@ -90,6 +90,8 @@ test("profile photographs are framed in authenticated profile settings before up
   assert.doesNotMatch(hero, /type="file"|Replace photo|deleteProfileAvatar|uploadProfileAvatar/);
   assert.match(cropper, /const canvas = document\.createElement\("canvas"\)/);
   assert.match(cropper, /canvas\.width = CROPPED_AVATAR_SIZE/);
+  assert.match(cropper, /context\.fillRect\(0, 0, CROPPED_AVATAR_SIZE, CROPPED_AVATAR_SIZE\)/);
+  assert.match(cropper, /min="0\.25"/);
   assert.match(cropper, /uploadProfileAvatar\(new File/);
   assert.match(cropper, /Reframe current photo/);
   assert.match(cropper, /Only the finished 512 × 512 crop is uploaded/);

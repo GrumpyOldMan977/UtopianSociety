@@ -983,8 +983,8 @@ function cropGeometry(image: CropImageSize, cropSize: number, zoom: number) {
   return {
     width,
     height,
-    maxX: Math.max(0, (width - cropSize) / 2),
-    maxY: Math.max(0, (height - cropSize) / 2),
+    maxX: Math.abs(width - cropSize) / 2,
+    maxY: Math.abs(height - cropSize) / 2,
   };
 }
 
@@ -1137,6 +1137,8 @@ function ProfilePhotoSettings({
       canvas.height = CROPPED_AVATAR_SIZE;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("This browser could not prepare the cropped profile photo.");
+      context.fillStyle = "#061d18";
+      context.fillRect(0, 0, CROPPED_AVATAR_SIZE, CROPPED_AVATAR_SIZE);
       const outputScale = CROPPED_AVATAR_SIZE / cropSize;
       context.drawImage(
         image,
@@ -1224,10 +1226,10 @@ function ProfilePhotoSettings({
       </div>
       <div className="profile-photo-crop-controls">
         <p>Drag the portrait directly, or use the controls for precise framing.</p>
-        <label>Zoom
+        <label>Zoom <small>{Math.round(zoom * 100)}%</small>
           <input
             type="range"
-            min="1"
+            min="0.25"
             max="3"
             step="0.01"
             value={zoom}
