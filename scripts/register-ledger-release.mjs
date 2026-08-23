@@ -18,10 +18,10 @@ if (!/^[A-Za-z0-9._-]+\.json$/.test(manifestName)) {
   throw new Error("The release manifest filename must be a simple JSON filename.");
 }
 
-const executable = process.platform === "win32" ? "npx.cmd" : "npx";
 const objectPath = `utopian-civic-files/ledger/releases/inbox/${manifestName}`;
+const wranglerCli = resolve(root, "node_modules/wrangler/bin/wrangler.js");
 const args = [
-  "wrangler", "r2", "object", "put", objectPath,
+  wranglerCli, "r2", "object", "put", objectPath,
   "--file", manifestPath,
   "--content-type", "application/json",
   "--remote",
@@ -30,7 +30,7 @@ const args = [
 ];
 
 await new Promise((resolveRun, rejectRun) => {
-  const child = spawn(executable, args, { cwd: root, stdio: "inherit" });
+  const child = spawn(process.execPath, args, { cwd: root, stdio: "inherit" });
   child.once("error", rejectRun);
   child.once("exit", (code) => {
     if (code === 0) resolveRun();

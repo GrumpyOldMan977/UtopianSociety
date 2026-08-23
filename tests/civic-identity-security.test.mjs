@@ -143,7 +143,8 @@ test("Transparency Ledger release automation is Cloudflare-native and auditable"
   assert.match(scheduled, /syncReleaseInbox\(env\)/);
   assert.doesNotMatch(scheduled, /syncPublicReleaseManifests/);
   assert.match(migration, /'civic-release-inbox'/);
-  assert.match(enqueue, /wrangler", "r2", "object", "put"/);
+  assert.match(enqueue, /node_modules\/wrangler\/bin\/wrangler\.js/);
+  assert.match(enqueue, /wranglerCli, "r2", "object", "put"/);
   assert.match(enqueue, /ledger\/releases\/inbox/);
   assert.doesNotMatch(enqueue, /LEDGER_ADMIN_KEY|api\.github\.com|githubusercontent/);
 });
