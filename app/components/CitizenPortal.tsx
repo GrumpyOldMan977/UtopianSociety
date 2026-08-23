@@ -1060,6 +1060,16 @@ function ProfilePhotoSettings({
     setOffset((current) => clampCropOffset(current, cropGeometry(sourceSize, cropSize, zoom)));
   }, [sourceSize, cropSize, zoom]);
 
+  async function openCropSource(nextUrl: string) {
+    const image = await loadCropImage(nextUrl);
+    if (sourceUrlRef.current) URL.revokeObjectURL(sourceUrlRef.current);
+    sourceUrlRef.current = nextUrl;
+    setSourceSize({ width: image.naturalWidth, height: image.naturalHeight });
+    setZoom(1);
+    setOffset({ x: 0, y: 0 });
+    setSourceUrl(nextUrl);
+  }
+
   async function chooseSource(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -1072,16 +1082,29 @@ function ProfilePhotoSettings({
     }
     const nextUrl = URL.createObjectURL(file);
     try {
-      const image = await loadCropImage(nextUrl);
-      if (sourceUrlRef.current) URL.revokeObjectURL(sourceUrlRef.current);
-      sourceUrlRef.current = nextUrl;
-      setSourceSize({ width: image.naturalWidth, height: image.naturalHeight });
-      setZoom(1);
-      setOffset({ x: 0, y: 0 });
-      setSourceUrl(nextUrl);
+      await openCropSource(nextUrl);
     } catch (cause) {
-      URL.revokeObjectURL(nextUrl);
+      if (sourceUrlRef.current !== nextUrl) URL.revokeObjectURL(nextUrl);
       setError(cause instanceof Error ? cause.message : "That image could not be opened.");
+    }
+  }
+
+  async function reframeCurrentPhoto() {
+    if (!avatarUrl) return;
+    setBusy(true);
+    setMessage("");
+    setError("");
+    let nextUrl = "";
+    try {
+      const response = await fetch(avatarUrl);
+      if (!response.ok) throw new Error("The current profile photo could not be opened for reframing.");
+      nextUrl = URL.createObjectURL(await response.blob());
+      await openCropSource(nextUrl);
+    } catch (cause) {
+      if (nextUrl && sourceUrlRef.current !== nextUrl) URL.revokeObjectURL(nextUrl);
+      setError(cause instanceof Error ? cause.message : "The current profile photo could not be opened for reframing.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -1251,6 +1274,7 @@ function ProfilePhotoSettings({
         <strong>{avatarUrl ? "Current profile photo" : "No profile photo selected"}</strong>
         <p>Choose a JPG, PNG, or WebP image up to 10 MB, then position and zoom it before saving.</p>
         <div className="profile-photo-actions">
+          {avatarUrl && <button type="button" disabled={busy} onClick={() => void reframeCurrentPhoto()}>{busy ? "Opening…" : "Reframe current photo"}</button>}
           <button type="button" disabled={busy} onClick={() => fileInput.current?.click()}>{avatarUrl ? "Choose new photo" : "Choose a photo"}</button>
           {avatarUrl && <button className="profile-photo-remove" type="button" disabled={busy} onClick={() => void removePhoto()}>{busy ? "Removing…" : "Remove photo"}</button>}
         </div>
