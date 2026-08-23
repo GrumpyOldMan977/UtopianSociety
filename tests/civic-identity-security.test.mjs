@@ -76,5 +76,6 @@ test("the public citizen directory lists only explicit public visibility", async
   assert.match(component, /getPublicCitizenDirectory/);
   assert.match(component, /Certificate identifiers and private Civic Profile records are never part of this directory/);
   assert.match(component, /citizen\.civicTitle/);
+  assert.match(component, /publicProfileAvatarUrl/);
   assert.doesNotMatch(component, /citizen\.publicBio|citizen\.primaryContribution|citizen\.civicStanding/);
 });

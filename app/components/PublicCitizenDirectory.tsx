@@ -4,15 +4,30 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   getPublicCitizenDirectory,
+  publicProfileAvatarUrl,
   type PublicCitizenDirectoryEntry,
 } from "../lib/civic-ledger";
 
+function initials(civicName: string) {
+  return civicName.split(/\s+/).map((part) => part[0]).slice(0, 3).join("");
+}
+
 function CitizenDirectoryEntry({ citizen }: { citizen: PublicCitizenDirectoryEntry }) {
+  const [avatarAvailable, setAvatarAvailable] = useState(citizen.hasAvatar);
   const position = citizen.civicTitle && citizen.civicTitle !== "Citizen"
     ? citizen.civicTitle
     : null;
 
   return <article className="citizen-directory-card">
+    <Link
+      className={`citizen-directory-avatar${avatarAvailable ? " has-image" : ""}`}
+      href={`/citizens/${citizen.slug}`}
+      aria-label={`Open ${citizen.civicName}'s public profile`}
+    >
+      {avatarAvailable
+        ? <img src={publicProfileAvatarUrl(citizen.slug)} alt="" onError={() => setAvatarAvailable(false)} />
+        : <span aria-hidden="true">{initials(citizen.civicName)}</span>}
+    </Link>
     <div className="citizen-directory-identity">
       <h2><Link href={`/citizens/${citizen.slug}`}>{citizen.civicName}</Link></h2>
       {position && <p className="citizen-directory-position">{position}</p>}
