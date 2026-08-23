@@ -492,6 +492,7 @@ export function CitizenPortal() {
       publicBio={profile.publicBio}
       profileVisibility={profile.profileVisibility}
       avatarUrl={avatarUrl}
+      aiAllowance={snapshot.aiAllowance}
       textSize={textSize}
       onTextSizeChange={(value) => {
         setTextSize(value);
@@ -972,6 +973,7 @@ export function CitizenPortal() {
 }
 
 const CROPPED_AVATAR_SIZE = 512;
+const PORTRAIT_GENERATOR_INPUT_SIZE = 496;
 
 type CropImageSize = { width: number; height: number };
 type CropOffset = { x: number; y: number };
@@ -1035,10 +1037,12 @@ function drawCroppedAvatar(
 function ProfilePhotoSettings({
   civicName,
   avatarUrl,
+  aiAllowance,
   onSaved,
 }: {
   civicName: string;
   avatarUrl: string;
+  aiAllowance: CivicPortalSnapshot["aiAllowance"];
   onSaved: () => Promise<void>;
 }) {
   const [sourceUrl, setSourceUrl] = useState("");
@@ -1059,6 +1063,12 @@ function ProfilePhotoSettings({
   const drag = useRef<{ pointerId: number; x: number; y: number; offset: CropOffset } | null>(null);
   const geometry = cropGeometry(sourceSize, cropSize, zoom);
   const initials = civicName.split(/\s+/).map((part) => part[0]).slice(0, 3).join("");
+  const portraitAllowanceAvailable = aiAllowance.configured && aiAllowance.portraitAvailable;
+  const portraitAllowanceMessage = !aiAllowance.configured
+    ? "The Cloudflare portrait generator is temporarily unavailable."
+    : portraitAllowanceAvailable
+      ? `A portrait uses approximately ${displayNumber(aiAllowance.portraitEstimate)} of the shared daily protective units.`
+      : "The shared 9,000-unit protective AI allowance cannot cover another portrait today. Try again after 00:00 UTC.";
 
   const discardGeneratedPortrait = useCallback(() => {
     if (generatedPortraitUrlRef.current) URL.revokeObjectURL(generatedPortraitUrlRef.current);
@@ -1167,15 +1177,15 @@ function ProfilePhotoSettings({
     drag.current = null;
   }
 
-  async function croppedPhotoBlob() {
+  async function croppedPhotoBlob(outputSize = CROPPED_AVATAR_SIZE) {
     if (!sourceUrl) throw new Error("Choose a profile photograph before continuing.");
     const image = cropImage.current || await loadCropImage(sourceUrl);
     const canvas = document.createElement("canvas");
-    canvas.width = CROPPED_AVATAR_SIZE;
-    canvas.height = CROPPED_AVATAR_SIZE;
+    canvas.width = outputSize;
+    canvas.height = outputSize;
     const context = canvas.getContext("2d");
     if (!context) throw new Error("This browser could not prepare the cropped profile photo.");
-    drawCroppedAvatar(context, image, sourceSize, cropSize, zoom, offset, CROPPED_AVATAR_SIZE);
+    drawCroppedAvatar(context, image, sourceSize, cropSize, zoom, offset, outputSize);
     const blob = await canvasBlob(canvas, "image/webp", 0.92) || await canvasBlob(canvas, "image/png");
     if (!blob) throw new Error("This browser could not create the cropped profile photo.");
     return blob;
@@ -1186,7 +1196,8 @@ function ProfilePhotoSettings({
     setMessage("");
     setError("");
     try {
-      const crop = await croppedPhotoBlob();
+      if (!portraitAllowanceAvailable) throw new Error(portraitAllowanceMessage);
+      const crop = await croppedPhotoBlob(PORTRAIT_GENERATOR_INPUT_SIZE);
       const cropExtension = crop.type === "image/webp" ? "webp" : "png";
       const generated = await generateProfilePortrait(new File([crop], `cropped-profile-photo.${cropExtension}`, {
         type: crop.type,
@@ -1198,8 +1209,18 @@ function ProfilePhotoSettings({
       setGeneratedPortraitUrl(previewUrl);
       setGeneratedPortrait(generated);
       setMessage("The generated portrait is ready for your approval. Your public profile has not changed.");
+      try {
+        await onSaved();
+      } catch {
+        // The portrait is still usable; the allowance display will reconcile on the next portal refresh.
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The Renaissance portrait could not be generated.");
+      try {
+        await onSaved();
+      } catch {
+        // Preserve the generator error when the portal snapshot cannot also be refreshed.
+      }
     } finally {
       setBusy(false);
     }
@@ -1325,7 +1346,8 @@ function ProfilePhotoSettings({
         </label>
         <div className="profile-photo-generation-disclosure">
           <strong>Renaissance portrait generator</strong>
-          <p>With your explicit request, only this finished crop is sent to OpenAI to create a colored-pencil portrait on warm vellum. Generation may take a minute and uses a paid AI service.</p>
+          <p>With your explicit request, only a 496 × 496 finished crop is sent to Cloudflare Workers AI to create a colored-pencil portrait on warm vellum. It uses approximately {displayNumber(aiAllowance.portraitEstimate)} units from the same protected daily allowance as Learning.</p>
+          <small id="portrait-allowance-help">{portraitAllowanceMessage}</small>
         </div>
         <label>Horizontal position
           <input
@@ -1352,11 +1374,37 @@ function ProfilePhotoSettings({
         <div className="profile-photo-actions">
           {generatedPortrait ? <>
             <button type="button" disabled={busy} onClick={() => void saveGeneratedPortrait()}>{busy ? "Saving…" : "Use generated portrait"}</button>
-            <button type="button" disabled={busy} onClick={() => void generateRenaissancePortrait()}>{busy ? "Generating…" : "Generate another"}</button>
+            <span
+              className="profile-photo-generation-control"
+              data-tooltip={!portraitAllowanceAvailable ? portraitAllowanceMessage : undefined}
+              title={portraitAllowanceMessage}
+              tabIndex={!portraitAllowanceAvailable ? 0 : undefined}
+            >
+              <button
+                className={`profile-photo-generate${portraitAllowanceAvailable ? "" : " is-allowance-exhausted"}`}
+                type="button"
+                disabled={busy || !portraitAllowanceAvailable}
+                aria-describedby="portrait-allowance-help"
+                onClick={() => void generateRenaissancePortrait()}
+              >{busy ? "Generating…" : portraitAllowanceAvailable ? "Generate another" : "Try again after daily reset"}</button>
+            </span>
             <button type="button" disabled={busy} onClick={() => void saveCrop()}>{busy ? "Saving…" : "Use original photograph"}</button>
           </> : <>
             <button type="button" disabled={busy} onClick={() => void saveCrop()}>{busy ? "Saving…" : "Save cropped photo"}</button>
-            <button type="button" disabled={busy} onClick={() => void generateRenaissancePortrait()}>{busy ? "Generating…" : "Generate Renaissance portrait"}</button>
+            <span
+              className="profile-photo-generation-control"
+              data-tooltip={!portraitAllowanceAvailable ? portraitAllowanceMessage : undefined}
+              title={portraitAllowanceMessage}
+              tabIndex={!portraitAllowanceAvailable ? 0 : undefined}
+            >
+              <button
+                className={`profile-photo-generate${portraitAllowanceAvailable ? "" : " is-allowance-exhausted"}`}
+                type="button"
+                disabled={busy || !portraitAllowanceAvailable}
+                aria-describedby="portrait-allowance-help"
+                onClick={() => void generateRenaissancePortrait()}
+              >{busy ? "Generating…" : portraitAllowanceAvailable ? "Generate Renaissance portrait" : "Try again after daily reset"}</button>
+            </span>
           </>}
           <button type="button" disabled={busy} onClick={discardSource}>Cancel crop</button>
           <button type="button" disabled={busy} onClick={() => fileInput.current?.click()}>Choose another image</button>
@@ -1391,6 +1439,7 @@ function PublicProfileSettings({
   publicBio,
   profileVisibility,
   avatarUrl,
+  aiAllowance,
   onSaved,
 }: {
   civicName: string;
@@ -1398,6 +1447,7 @@ function PublicProfileSettings({
   publicBio: string;
   profileVisibility: string;
   avatarUrl: string;
+  aiAllowance: CivicPortalSnapshot["aiAllowance"];
   onSaved: () => Promise<void>;
 }) {
   const [title, setTitle] = useState(civicTitle);
@@ -1436,7 +1486,7 @@ function PublicProfileSettings({
         <h2 id="public-profile-settings-title">Shape what the public learns about you</h2>
       </div>
     </header>
-    <ProfilePhotoSettings civicName={civicName} avatarUrl={avatarUrl} onSaved={onSaved} />
+    <ProfilePhotoSettings civicName={civicName} avatarUrl={avatarUrl} aiAllowance={aiAllowance} onSaved={onSaved} />
     <form onSubmit={save}>
       <label>Public role or title
         <input value={title} maxLength={100} onChange={(event) => setTitle(event.target.value)} />
@@ -1471,6 +1521,7 @@ function PrivateIdentitySettings({
   publicBio,
   profileVisibility,
   avatarUrl,
+  aiAllowance,
   textSize,
   onTextSizeChange,
   onClose,
@@ -1481,6 +1532,7 @@ function PrivateIdentitySettings({
   publicBio: string;
   profileVisibility: string;
   avatarUrl: string;
+  aiAllowance: CivicPortalSnapshot["aiAllowance"];
   textSize: PortalTextSize;
   onTextSizeChange: (value: PortalTextSize) => void;
   onClose: () => void;
@@ -1677,6 +1729,7 @@ function PrivateIdentitySettings({
       publicBio={publicBio}
       profileVisibility={profileVisibility}
       avatarUrl={avatarUrl}
+      aiAllowance={aiAllowance}
       onSaved={onSaved}
     />
   </section>;

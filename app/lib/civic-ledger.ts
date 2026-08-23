@@ -316,8 +316,11 @@ export type CivicPortalSnapshot = {
   aiAllowance: {
     provider: string;
     model: string;
+    portraitModel: string;
     configured: boolean;
     available: boolean;
+    portraitAvailable: boolean;
+    portraitEstimate: number;
     dailyLimit: number;
     protectiveLimit: number;
     used: number;
@@ -715,15 +718,22 @@ export async function generateProfilePortrait(file: File) {
   if (!sessionToken) throw new Error("Sign in before generating a profile portrait.");
   const body = new FormData();
   body.append("file", file);
-  const response = await fetch("/api/profile/portrait", {
+  const response = await fetch(`${civicLedgerApi()}/v3/profile/portrait`, {
     method: "POST",
     headers: { Authorization: `Bearer ${sessionToken}` },
     body,
     cache: "no-store",
   });
   if (!response.ok) {
-    const result = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(result.error || "The Renaissance portrait could not be generated.");
+    const result = await readCivicJson<Record<string, never>>(
+      response,
+      "The portrait service returned an unreadable response. No profile image was changed.",
+    );
+    throw new CivicServiceError(
+      result.error || "The Renaissance portrait could not be generated.",
+      result.code,
+      response.status,
+    );
   }
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.startsWith("image/")) {

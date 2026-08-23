@@ -49,10 +49,16 @@ const CLOUDFLARE_PBKDF2_MAX_ITERATIONS = 100_000;
 const CIVIC_SESSION_LIFETIME_MS = 12 * 60 * 60 * 1000;
 const CIVIC_LOGIN_LOCK_MS = 5 * 60 * 1000;
 const LEARNING_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
+const PORTRAIT_AI_MODEL = "@cf/black-forest-labs/flux-2-klein-9b";
 const AI_DAILY_ALLOWANCE = 10_000;
 const AI_PROTECTIVE_LIMIT = 9_000;
 const AI_CONVERSION_ESTIMATE = 75;
 const AI_PREFLIGHT_ESTIMATE = 650;
+// FLUX.2 Klein 9B costs 1,363.64 neurons for the first 1024x1024 output MP
+// plus 181.82 neurons per input MP. The browser sends a 496x496 crop.
+const AI_PORTRAIT_ESTIMATE = 1_409;
+const PORTRAIT_INPUT_MAX_BYTES = 2 * 1024 * 1024;
+const PORTRAIT_PROMPT = `Transform input image 0 into a dignified Renaissance anatomical-study colored-pencil portrait on warm ochre vellum. Preserve the person's facial identity, apparent age, skin tone, hair, glasses, beard, expression, and head angle with high fidelity. Use fine graphite and ink hatching, subtle hand-drawn contours, natural facial proportions, muted green, teal, and antique-gold color accents, and gentle parchment texture inspired by Leonardo da Vinci's manuscript studies. Keep the face centered and fully visible inside a circular-avatar-safe square composition. Do not add text, labels, signatures, symbols, insignia, extra people, extra limbs, hats, jewelry, uniforms, costumes, or invented objects. The result must be a polished civic portrait, not a photographic filter, embossing effect, relief, negative, or photocopy.`;
 const UTOPIAN_EPOCH_UTC = Date.UTC(2026, 2, 20);
 const DAY_IN_MS = 86_400_000;
 const DEEP_BRIDGE_REMAINDERS = new Set([1, 5, 9, 13, 17, 22, 26, 30]);
@@ -594,6 +600,13 @@ function isSupportedImage(mediaType, bytes) {
       && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
   }
   return false;
+}
+
+function detectedImageMediaType(bytes) {
+  for (const mediaType of ["image/png", "image/jpeg", "image/webp"]) {
+    if (isSupportedImage(mediaType, bytes)) return mediaType;
+  }
+  return "";
 }
 
 function binaryResponse(request, bytes, mediaType, fileName, init = {}) {
@@ -1464,6 +1477,129 @@ async function uploadProfileAvatar(request, env) {
   return { assetId, mediaType: file.type, byteSize: file.size, uploadedAt: now };
 }
 
+async function generateProfilePortrait(request, env) {
+  await requireCivicSession(request, env);
+  const allowance = await aiAllowanceStatus(env);
+  if (!allowance.configured) {
+    throw new ClientError(
+      "The Cloudflare portrait generator is not configured.",
+      503,
+      "workers_ai_unavailable",
+    );
+  }
+  if (!allowance.portraitAvailable) {
+    throw new ClientError(
+      `The portal's protective AI allowance cannot cover another portrait today. Try again after ${allowance.resetAt}.`,
+      429,
+      "workers_ai_allowance_exhausted",
+    );
+  }
+
+  let form;
+  try {
+    form = await request.formData();
+  } catch {
+    throw new ClientError("The cropped profile photograph could not be read.", 400, "portrait_crop_invalid");
+  }
+  const file = form.get("file");
+  if (!(file instanceof File) || file.size < 1 || file.size > PORTRAIT_INPUT_MAX_BYTES) {
+    throw new ClientError(
+      "Send a valid JPG, PNG, or WebP crop no larger than 2 MB.",
+      400,
+      "portrait_crop_invalid",
+    );
+  }
+  const inputBytes = new Uint8Array(await file.arrayBuffer());
+  if (!isSupportedImage(file.type, inputBytes)) {
+    throw new ClientError(
+      "Send a valid JPG, PNG, or WebP crop.",
+      400,
+      "portrait_crop_invalid",
+    );
+  }
+
+  const aiForm = new FormData();
+  aiForm.append("input_image_0", new File([inputBytes], "civic-profile-crop", { type: file.type }));
+  aiForm.append("prompt", PORTRAIT_PROMPT);
+  aiForm.append("width", "1024");
+  aiForm.append("height", "1024");
+  const multipartResponse = new Response(aiForm);
+  const multipartContentType = multipartResponse.headers.get("content-type");
+  if (!multipartResponse.body || !multipartContentType) {
+    throw new ClientError(
+      "The portrait generator could not prepare this crop.",
+      502,
+      "portrait_generation_failed",
+    );
+  }
+
+  let generated;
+  try {
+    generated = await env.AI.run(PORTRAIT_AI_MODEL, {
+      multipart: {
+        body: multipartResponse.body,
+        contentType: multipartContentType,
+      },
+    });
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    console.error(JSON.stringify({
+      level: "error",
+      message: "profile-portrait-ai-request-failed",
+      model: PORTRAIT_AI_MODEL,
+      error: detail,
+    }));
+    if (/3036|daily free allocation|10,?000 neurons|account limited/i.test(detail)) {
+      await recordAiAccountLimit(env);
+      throw new ClientError(
+        `Cloudflare's daily AI allowance has been reached. Try again after ${allowance.resetAt}.`,
+        429,
+        "workers_ai_allowance_exhausted",
+      );
+    }
+    throw new ClientError(
+      "Cloudflare could not complete this portrait. Try another crop or try again later.",
+      502,
+      "portrait_generation_failed",
+    );
+  }
+
+  const encoded = typeof generated?.image === "string"
+    ? generated.image.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "")
+    : "";
+  if (!encoded) {
+    throw new ClientError(
+      "Cloudflare returned no portrait image.",
+      502,
+      "portrait_response_invalid",
+    );
+  }
+  let outputBytes;
+  try {
+    outputBytes = base64ToBytes(encoded);
+  } catch {
+    throw new ClientError(
+      "Cloudflare returned an unreadable portrait image.",
+      502,
+      "portrait_response_invalid",
+    );
+  }
+  const mediaType = detectedImageMediaType(outputBytes);
+  if (!mediaType) {
+    throw new ClientError(
+      "Cloudflare returned an unsupported portrait image.",
+      502,
+      "portrait_response_invalid",
+    );
+  }
+  await recordAiUsage(env, {
+    modelName: PORTRAIT_AI_MODEL,
+    requestCount: 1,
+    estimatedNeurons: AI_PORTRAIT_ESTIMATE,
+  });
+  return { bytes: outputBytes, mediaType };
+}
+
 async function profileAvatar(request, env) {
   const session = await requireCivicSession(request, env);
   const asset = await env.DB.prepare(`
@@ -1904,8 +2040,11 @@ async function aiAllowanceStatus(env, date = new Date()) {
   return {
     provider: "Cloudflare Workers AI",
     model: LEARNING_AI_MODEL,
+    portraitModel: PORTRAIT_AI_MODEL,
     configured: Boolean(env.AI),
     available: Boolean(env.AI) && protectiveRemaining >= AI_PREFLIGHT_ESTIMATE,
+    portraitAvailable: Boolean(env.AI) && protectiveRemaining >= AI_PORTRAIT_ESTIMATE,
+    portraitEstimate: AI_PORTRAIT_ESTIMATE,
     dailyLimit: AI_DAILY_ALLOWANCE,
     protectiveLimit: AI_PROTECTIVE_LIMIT,
     used: Math.round(used * 100) / 100,
@@ -1915,11 +2054,12 @@ async function aiAllowanceStatus(env, date = new Date()) {
     requestCount: Number(row?.request_count || 0),
     conversionCount: Number(row?.conversion_count || 0),
     resetAt: aiResetAt(date),
-    scopeNote: "Estimated portal use recorded by this Worker; other Cloudflare AI use is not visible here.",
+    scopeNote: "Estimated Learning and portrait use recorded by this Worker; other Cloudflare AI use is not visible here.",
   };
 }
 
 async function recordAiUsage(env, {
+  modelName = LEARNING_AI_MODEL,
   requestCount = 0,
   conversionCount = 0,
   promptTokens = 0,
@@ -1933,7 +2073,10 @@ async function recordAiUsage(env, {
       prompt_tokens, completion_tokens, estimated_neurons, updated_at
     ) VALUES (?1, 'cloudflare-workers-ai', ?2, ?3, ?4, ?5, ?6, ?7, ?8)
     ON CONFLICT(usage_date) DO UPDATE SET
-      model_name = excluded.model_name,
+      model_name = CASE
+        WHEN ai_usage_daily.model_name = excluded.model_name THEN excluded.model_name
+        ELSE 'mixed'
+      END,
       request_count = ai_usage_daily.request_count + excluded.request_count,
       conversion_count = ai_usage_daily.conversion_count + excluded.conversion_count,
       prompt_tokens = ai_usage_daily.prompt_tokens + excluded.prompt_tokens,
@@ -1942,7 +2085,7 @@ async function recordAiUsage(env, {
       updated_at = excluded.updated_at
   `).bind(
     aiUsageDate(now),
-    LEARNING_AI_MODEL,
+    modelName,
     requestCount,
     conversionCount,
     Math.max(0, Math.round(promptTokens)),
@@ -1950,6 +2093,20 @@ async function recordAiUsage(env, {
     Math.max(0, estimatedNeurons),
     now.toISOString(),
   ).run();
+}
+
+async function recordAiAccountLimit(env) {
+  const now = new Date();
+  await env.DB.prepare(`
+    INSERT INTO ai_usage_daily (
+      usage_date, provider, model_name, request_count, conversion_count,
+      prompt_tokens, completion_tokens, estimated_neurons, updated_at
+    ) VALUES (?1, 'cloudflare-workers-ai', 'account-limit', 0, 0, 0, 0, ?2, ?3)
+    ON CONFLICT(usage_date) DO UPDATE SET
+      model_name = 'account-limit',
+      estimated_neurons = MAX(ai_usage_daily.estimated_neurons, excluded.estimated_neurons),
+      updated_at = excluded.updated_at
+  `).bind(aiUsageDate(now), AI_PROTECTIVE_LIMIT, now.toISOString()).run();
 }
 
 async function portalSnapshot(env, civicId) {
@@ -5374,6 +5531,13 @@ async function route(request, env) {
     return json(request, await uploadProfileAvatar(request, env), {
       status: 201,
       headers: { "Cache-Control": "no-store" },
+    });
+  }
+
+  if (request.method === "POST" && path === "/v3/profile/portrait") {
+    const generated = await generateProfilePortrait(request, env);
+    return binaryResponse(request, generated.bytes, generated.mediaType, null, {
+      headers: { "Cache-Control": "private, no-store" },
     });
   }
 
