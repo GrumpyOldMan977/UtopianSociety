@@ -1,0 +1,37 @@
+{
+  "releaseKey": "site-release:2026-08-24:branded-http-error-pages",
+  "entries": [
+    {
+      "eventKey": "site-release:0747ba9:branded-http-error-pages",
+      "eventType": "platform_release",
+      "category": "platform",
+      "title": "Public HTTP error and recovery pages introduced",
+      "summary": "The public site now replaces the host's plain error response with branded, accessible recovery pages in the Society's green, gold, and vellum visual language. Unknown paths return a genuine HTTP 404 response with search-index protection and useful routes back into the corpus; recoverable application failures receive a coordinated HTTP 500 experience with retry and public-record options. The copy is deliberately informative with a restrained measure of wit. All 75 release tests passed before publication, and the custom-domain 404 was verified after deployment.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "Public HTTP Error and Recovery Pages",
+      "subjectRef": "release:v4-branded-http-error-pages",
+      "occurredAt": "2026-08-24T05:18:25.159Z",
+      "utopianDate": "Minday, Aura 18, Utopian Year 1",
+      "gregorianDate": "August 24, 2026",
+      "sourceLabel": "The Utopian Society public site",
+      "sourceUrl": "https://utopiansocietycorpus.org/",
+      "metadata": {
+        "version": "4.2.1",
+        "implementationCommit": "0747ba940229e001a88ae0d0e5b8698cbee4c72f",
+        "sitesVersion": 38,
+        "sitesDeployment": "appgdep_6a8bd3de01dc81919a04b856b0bf4cfc",
+        "releaseTests": 75,
+        "verifiedHttpStatus": 404,
+        "changes": [
+          "Added a branded HTTP 404 page for unknown public paths",
+          "Preserved the genuine HTTP 404 status for clients and crawlers",
+          "Marked error responses noindex and nofollow",
+          "Added clear recovery routes to the frontispiece, Society, and Blogs and Essays",
+          "Added coordinated route-level and global HTTP 500 recovery experiences",
+          "Added accessible reduced-motion and responsive presentation",
+          "Added automated coverage for the rendered 404 response and error fallbacks"
+        ]
+      }
+    }
+  ]
+}
