@@ -877,6 +877,29 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.32;ba
   .site-header nav{display:flex;justify-content:center;flex-wrap:wrap;gap:10px 20px;margin-top:5px;padding-bottom:10px;white-space:normal}
   .frontispiece{padding-top:45px;overflow-x:clip}
 }
+
+/* HTTP errors: useful directions, a small smile, and the same civic visual language. */
+.http-error-page{min-height:100vh;background:linear-gradient(145deg,#0b332a,#123f34 58%,#08271f);color:#f1e8d8}
+.http-error-stage{position:relative;isolation:isolate;min-height:calc(100vh - 156px);display:grid;place-items:center;overflow:hidden;padding:clamp(48px,8vw,110px) clamp(20px,6vw,92px)}
+.http-error-stage:before{content:"";position:absolute;z-index:-3;inset:0;background:radial-gradient(circle at 50% 48%,rgba(218,184,112,.17),transparent 36%),repeating-linear-gradient(135deg,transparent 0 22px,rgba(225,196,135,.025) 22px 23px)}
+.http-error-stage:after{content:"";position:absolute;z-index:-1;inset:22px;border:1px solid rgba(222,197,141,.22);pointer-events:none}
+.http-error-code{position:absolute;z-index:-2;left:50%;top:49%;transform:translate(-50%,-50%);color:rgba(231,202,140,.075);font:500 clamp(190px,38vw,570px)/.72 Georgia,serif;letter-spacing:-.1em;white-space:nowrap;user-select:none}
+.http-error-orbit{position:absolute;z-index:-2;width:min(660px,82vw);aspect-ratio:1;border:1px solid rgba(221,194,134,.18);border-radius:50%;transform:rotate(-11deg)}
+.http-error-orbit i{position:absolute;width:34%;aspect-ratio:1;border:2px solid rgba(221,194,134,.16);border-radius:50%}.http-error-orbit i:nth-child(1){left:33%;top:4%}.http-error-orbit i:nth-child(2){right:4%;top:33%}.http-error-orbit i:nth-child(3){left:33%;bottom:4%}.http-error-orbit i:nth-child(4){left:4%;top:33%}.http-error-orbit i:nth-child(5){left:33%;top:33%;border-color:rgba(221,194,134,.27)}
+.http-error-vellum{position:relative;width:min(790px,100%);padding:clamp(34px,6vw,72px);border:1px solid rgba(213,178,105,.68);background:linear-gradient(135deg,rgba(241,231,210,.98),rgba(218,204,177,.98));color:#17382f;box-shadow:0 34px 100px rgba(0,13,10,.46),inset 0 0 50px rgba(113,78,30,.08)}
+.http-error-vellum:before{content:"";position:absolute;inset:10px;border:1px solid rgba(113,78,30,.19);pointer-events:none}
+.http-error-eyebrow{display:block;color:#8d672f;font-size:11px;font-weight:850;letter-spacing:.2em;text-transform:uppercase}
+.http-error-vellum h1{max-width:670px;margin:17px 0 23px;font:500 clamp(42px,6.5vw,74px)/.95 Georgia,serif;letter-spacing:-.045em;text-wrap:balance}
+.http-error-vellum>p{max-width:650px;margin:0;color:#4d5b54;font:400 clamp(16px,1.8vw,20px)/1.7 Georgia,serif}
+.http-error-vellum aside{margin:28px 0 0;padding:18px 20px;border-left:3px solid #b18443;background:rgba(255,250,239,.5);color:#6f5d43;font:italic 15px/1.55 Georgia,serif}
+.http-error-vellum nav{display:flex;flex-wrap:wrap;gap:10px;margin-top:31px}
+.http-error-vellum nav a,.http-error-vellum nav button{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:12px 16px;border:1px solid #94703a;background:transparent;color:#23473c;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:background .2s,color .2s,border-color .2s}
+.http-error-vellum nav a:hover,.http-error-vellum nav a:focus-visible,.http-error-vellum nav button:hover,.http-error-vellum nav button:focus-visible{background:#23473c;border-color:#23473c;color:#f4e9d4;outline:none}
+.http-error-vellum nav .http-error-primary{background:#23473c;border-color:#23473c;color:#f4e9d4}.http-error-vellum nav .http-error-primary:hover,.http-error-vellum nav .http-error-primary:focus-visible{background:#b18443;border-color:#b18443;color:#102d25}
+.http-error-emergency-header{display:flex;align-items:center;min-height:88px;padding:14px clamp(22px,5vw,76px);border-bottom:1px solid rgba(215,189,131,.35);background:linear-gradient(180deg,#0d352d,#082820)}
+.http-error-emergency-header .wordmark{color:#f1e7d4}.http-error-emergency-header .wordmark-mark{color:#d7bd83}.http-error-emergency-header .wordmark strong{font-size:clamp(18px,2vw,25px)}
+@media(max-width:600px){.http-error-stage{min-height:calc(100vh - 142px);padding:38px 14px}.http-error-stage:after{inset:9px}.http-error-vellum{padding:36px 27px}.http-error-vellum h1{font-size:clamp(38px,12vw,55px)}.http-error-vellum nav{display:grid}.http-error-vellum nav a,.http-error-vellum nav button{width:100%}.http-error-code{font-size:56vw}.http-error-orbit{width:105vw}}
+@media(prefers-reduced-motion:reduce){.http-error-vellum nav a,.http-error-vellum nav button{transition:none}}
 .threshold-map li button>b{font-size:13px}.threshold-map li button span{gap:0}.threshold-map li button strong{font-size:15px;line-height:1.08}.threshold-map li button small{display:none}.threshold-map li button:after{display:none}
 .threshold-map li:not(:last-child):after{content:"→";position:absolute;z-index:3;right:-9px;top:50%;transform:translateY(-50%);color:#e2c67e;font:500 16px Georgia,serif;text-shadow:0 1px 4px #062019;pointer-events:none}
 @media(max-width:620px){.threshold-map ol{left:12px;right:12px;bottom:62px;grid-template-columns:repeat(2,1fr);gap:5px}.threshold-map li button{min-height:72px}.threshold-map li:nth-child(2):after{content:"↓";right:50%;top:calc(100% + 2px);transform:translateX(50%)}.threshold-map li:nth-child(3):after{content:"→"}.threshold-map li button strong{font-size:14px}}

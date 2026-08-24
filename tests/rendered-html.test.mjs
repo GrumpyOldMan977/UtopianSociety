@@ -69,6 +69,32 @@ test("server-renders the Utopian Society frontispiece", async () => {
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|Codex is working/i);
 });
 
+test("unknown paths and runtime failures receive branded recovery pages", async () => {
+  const response = await render("/this-path-is-intentionally-uncharted");
+  assert.equal(response.status, 404);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+
+  const html = await response.text();
+  assert.match(html, /Path not found · The Utopian Society/);
+  assert.match(html, /This path has wandered beyond the corpus/);
+  assert.match(html, /HTTP 404 · Uncharted path/);
+  assert.match(html, /Return to the frontispiece/);
+  assert.match(html, /<meta[^>]+(?:name="robots"[^>]+content="[^"]*noindex|content="[^"]*noindex[^"]*"[^>]+name="robots")/i);
+  assert.doesNotMatch(html, /^Not Found$/);
+
+  const [routeError, globalError, styles] = await Promise.all([
+    readFile(new URL("../app/error.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/global-error.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(routeError, /HTTP 500 · Civic instrument interrupted/);
+  assert.match(routeError, /Try this page again/);
+  assert.match(globalError, /HTTP 500 · System interruption/);
+  assert.match(globalError, /Return to the frontispiece/);
+  assert.match(styles, /\.http-error-vellum/);
+  assert.match(styles, /prefers-reduced-motion:reduce/);
+});
+
 test("Editorial Studio remains private until civic authority is verified", async () => {
   const response = await render("/editorial");
   assert.equal(response.status, 200);
