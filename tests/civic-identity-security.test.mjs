@@ -181,8 +181,8 @@ test("the managed civic wire attributes every human change and safely supports c
   assert.match(route, /request\.method === "PATCH" && tickerSourceAction/);
   assert.match(scheduled, /syncTickerSources\(env\)/);
   assert.match(studio, /Source Manager/);
-  assert.match(studio, /Add custom RSS/);
-  assert.match(studio, /Everything the public ticker contains/);
+  assert.match(studio, /Add RSS or Atom feed/);
+  assert.match(studio, /Current rotation/);
   assert.match(studio, /Archive/);
   assert.match(client, /getTickerManager/);
   assert.doesNotMatch(section(worker, "async function createTickerAnnouncement", "async function updateTickerAnnouncement"), /input\.createdBy/);

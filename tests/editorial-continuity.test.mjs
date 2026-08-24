@@ -39,10 +39,10 @@ test("the WordPress bridge is read-only, review-gated, and incapable of WordPres
   assert.match(worker, /remoteWritesEnabled:\s*false/);
   assert.match(worker, /reviewRequired:\s*true/);
   assert.match(worker, /requireLocalV3\(request, env\)/);
-  assert.match(studio, /WordPress writes remain disabled here/);
+  assert.match(studio, /WordPress connection is read-only/);
   assert.match(studio, /No WordPress content was changed/);
   assert.match(studio, /synchronizeWordpressPublications/);
-  assert.match(studio, /Download reviewed handoff manifest/);
+  assert.match(studio, /Download handoff file/);
   assert.match(localConfig, /"DEPLOYMENT_MODE":\s*"local-v3"/);
   assert.doesNotMatch(productionConfig, /"DEPLOYMENT_MODE":\s*"local-v3"/);
 });
