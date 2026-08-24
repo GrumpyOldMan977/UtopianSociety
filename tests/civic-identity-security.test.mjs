@@ -187,3 +187,38 @@ test("the managed civic wire attributes every human change and safely supports c
   assert.match(client, /getTickerManager/);
   assert.doesNotMatch(section(worker, "async function createTickerAnnouncement", "async function updateTickerAnnouncement"), /input\.createdBy/);
 });
+
+test("weather remains required while supporting attributed decentralized locations", async () => {
+  const worker = await source("cloudflare/civic-ledger/src/index.js");
+  const migration = await source("cloudflare/civic-ledger/migrations/0021_v4_weather_location_manager.sql");
+  const studio = await source("app/components/EditorialStudio.tsx");
+  const client = await source("app/lib/civic-ledger.ts");
+  const ticker = section(worker, "function publicAnnouncement", "function publicationSlug");
+  const route = section(worker, "async function route", "const civicLedgerWorker");
+
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS ticker_weather_locations/);
+  assert.match(migration, /'TIW-SPG'.*'South Pacific Gyre'/s);
+  assert.match(migration, /ticker_required_source_update_guard/);
+  assert.match(migration, /TIS-WEATHER.*TIS-REFERENCE-TIME/s);
+  assert.match(migration, /ticker_weather_last_active_update_guard/);
+  assert.match(migration, /at_least_one_weather_location_required/);
+  assert.match(ticker, /async function geocodeTickerWeatherLocations/);
+  assert.match(ticker, /geocoding-api\.open-meteo\.com/);
+  assert.match(ticker, /ticker_weather_location_created/);
+  assert.match(ticker, /ticker_weather_location_archived/);
+  assert.match(ticker, /actorName: values\.actorName/);
+  assert.match(ticker, /async function fetchTickerWeather\(location\)/);
+  assert.match(ticker, /location\.latitude/);
+  assert.match(ticker, /location\.longitude/);
+  assert.match(route, /weather-locations\/geocode/);
+  assert.match(route, /createTickerWeatherLocation/);
+  assert.match(route, /updateTickerWeatherLocation/);
+  assert.match(route, /refreshTickerWeatherLocation/);
+  assert.match(studio, /Weather Locations/);
+  assert.match(studio, /At least one location remains active/);
+  assert.match(studio, /Land weather/);
+  assert.match(studio, /Marine conditions/);
+  assert.match(studio, /Add or activate another weather location before archiving this one/);
+  assert.match(client, /searchTickerWeatherLocations/);
+  assert.match(client, /createTickerWeatherLocation/);
+});

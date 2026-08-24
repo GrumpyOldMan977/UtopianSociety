@@ -48,6 +48,7 @@ next-env.d.ts
 /scratch/
 /.local-services/
 /cloudflare/civic-ledger/.wrangler/
+/cloudflare/civic-ledger/.tmp/
 /cloudflare/civic-ledger/cloudflare/
 /cloudflare/civic-ledger/outputs/
 /cloudflare/civic-ledger/deliverables/

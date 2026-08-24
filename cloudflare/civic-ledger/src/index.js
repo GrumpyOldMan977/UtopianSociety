@@ -4997,6 +4997,8 @@ function publicAnnouncement(row) {
 const TICKER_TREATMENTS = new Set(["standard", "vellum", "alternating", "urgent", "pulse"]);
 const TICKER_ANNOUNCEMENT_STATUSES = new Set(["draft", "scheduled", "active", "paused", "expired", "archived"]);
 const TICKER_SOURCE_STATUSES = new Set(["active", "paused", "archived"]);
+const TICKER_WEATHER_MODES = new Set(["land", "marine", "combined"]);
+const REQUIRED_TICKER_SOURCE_IDS = new Set(["TIS-WEATHER", "TIS-REFERENCE-TIME"]);
 const TICKER_FETCH_LIMIT = 512 * 1024;
 
 function tickerTreatment(value, fallback = "standard") {
@@ -5067,6 +5069,34 @@ function publicTickerSource(row) {
     itemLimit: Number(row.item_limit),
     refreshMinutes: Number(row.refresh_minutes),
     builtIn: Boolean(row.built_in),
+    required: REQUIRED_TICKER_SOURCE_IDS.has(row.source_id),
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+    lastCheckedAt: row.last_checked_at || null,
+    lastSuccessAt: row.last_success_at || null,
+    lastError: row.last_error || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at || null,
+  };
+}
+
+function publicTickerWeatherLocation(row) {
+  return {
+    locationId: row.location_id,
+    locationKey: row.location_key,
+    sourceId: row.source_id,
+    label: row.label,
+    latitude: Number(row.latitude),
+    longitude: Number(row.longitude),
+    timezone: row.timezone || "UTC",
+    conditionsMode: row.conditions_mode || "combined",
+    enabled: Boolean(row.enabled),
+    status: row.status,
+    priority: Number(row.priority),
+    sortOrder: Number(row.sort_order),
+    treatment: row.treatment || "standard",
+    refreshMinutes: Number(row.refresh_minutes),
     createdBy: row.created_by,
     updatedBy: row.updated_by,
     lastCheckedAt: row.last_checked_at || null,
@@ -5082,6 +5112,7 @@ function publicTickerFeedItem(row) {
   return {
     itemId: row.item_id,
     sourceId: row.source_id,
+    weatherLocationId: row.weather_location_id || null,
     label: row.label,
     href: row.href || null,
     publishedAt: row.published_at || null,
@@ -5578,12 +5609,16 @@ function tickerSourceInput(input, existing = null) {
   const creditUrl = Object.hasOwn(input, "creditUrl")
     ? tickerDestination(input.creditUrl)
     : existing?.credit_url || (endpointUrl ? new URL(endpointUrl).origin : null);
+  const enabled = Object.hasOwn(input, "enabled") ? Boolean(input.enabled) : existing ? Boolean(existing.enabled) : true;
+  if (existing && REQUIRED_TICKER_SOURCE_IDS.has(existing.source_id) && (!enabled || status !== "active")) {
+    throw new ClientError("Utopian Reference Time and the weather collection are required civic-wire sources.", 409, "required_ticker_source");
+  }
   return {
     label,
     prefix,
     endpointUrl,
     creditUrl,
-    enabled: Object.hasOwn(input, "enabled") ? Boolean(input.enabled) : existing ? Boolean(existing.enabled) : true,
+    enabled,
     status,
     priority: Object.hasOwn(input, "priority") ? tickerNumber(input.priority, 10, -100, 100) : Number(existing?.priority ?? 10),
     sortOrder: Object.hasOwn(input, "sortOrder") ? tickerNumber(input.sortOrder, 0, -1000, 1000) : Number(existing?.sort_order ?? 0),
@@ -5677,6 +5712,180 @@ async function updateTickerSource(request, env, sourceId, input) {
   }
   const row = await env.DB.prepare("SELECT * FROM ticker_sources WHERE source_id = ?1").bind(sourceId).first();
   return { updated: true, source: publicTickerSource(row) };
+}
+
+function tickerCoordinate(value, name, minimum, maximum) {
+  const coordinate = Number(value);
+  if (!Number.isFinite(coordinate) || coordinate < minimum || coordinate > maximum) {
+    throw new ClientError(`${name} must be between ${minimum} and ${maximum}.`, 400, "ticker_weather_coordinate_invalid");
+  }
+  return Math.round(coordinate * 1_000_000) / 1_000_000;
+}
+
+function tickerWeatherLocationInput(input, existing = null) {
+  const label = Object.hasOwn(input, "label") ? cleanText(input.label, 120) : existing?.label;
+  const latitude = Object.hasOwn(input, "latitude")
+    ? tickerCoordinate(input.latitude, "Latitude", -90, 90)
+    : Number(existing?.latitude);
+  const longitude = Object.hasOwn(input, "longitude")
+    ? tickerCoordinate(input.longitude, "Longitude", -180, 180)
+    : Number(existing?.longitude);
+  const timezone = Object.hasOwn(input, "timezone") ? cleanText(input.timezone || "UTC", 100) : existing?.timezone || "UTC";
+  if (!/^[A-Za-z0-9_+./-]+$/.test(timezone)) throw new ClientError("Select a valid location timezone.", 400, "ticker_weather_timezone_invalid");
+  const conditionsMode = Object.hasOwn(input, "conditionsMode") ? cleanText(input.conditionsMode, 20) : existing?.conditions_mode || "combined";
+  if (!TICKER_WEATHER_MODES.has(conditionsMode)) throw new ClientError("Select land, marine, or combined conditions.");
+  const status = Object.hasOwn(input, "status") ? cleanText(input.status, 20) : existing?.status || "active";
+  if (!TICKER_SOURCE_STATUSES.has(status)) throw new ClientError("Select a supported weather-location status.");
+  return {
+    label,
+    latitude,
+    longitude,
+    timezone,
+    conditionsMode,
+    enabled: Object.hasOwn(input, "enabled") ? Boolean(input.enabled) : existing ? Boolean(existing.enabled) : true,
+    status,
+    priority: Object.hasOwn(input, "priority") ? tickerNumber(input.priority, 10, -100, 100) : Number(existing?.priority ?? 10),
+    sortOrder: Object.hasOwn(input, "sortOrder") ? tickerNumber(input.sortOrder, 0, -1000, 1000) : Number(existing?.sort_order ?? 0),
+    treatment: Object.hasOwn(input, "treatment") ? tickerTreatment(input.treatment, existing?.treatment) : existing?.treatment || "standard",
+    refreshMinutes: Object.hasOwn(input, "refreshMinutes") ? tickerNumber(input.refreshMinutes, 5, 5, 1440) : Number(existing?.refresh_minutes ?? 5),
+  };
+}
+
+function tickerWeatherLocationKey(label, locationId) {
+  const stem = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 42) || "location";
+  return `${stem}-${locationId.slice(-8).toLowerCase()}`;
+}
+
+function weatherLocationConstraint(error) {
+  const message = String(error?.message || error);
+  if (message.includes("at_least_one_weather_location_required")) {
+    return new ClientError("At least one active weather location must remain on the civic wire.", 409, "at_least_one_weather_location_required");
+  }
+  return null;
+}
+
+async function prepareWeatherLocationEvent(request, env, values) {
+  return prepareEntry(env, {
+    eventKey: `civic-portal:${values.locationId}:${values.eventType}:${crypto.randomUUID()}`,
+    eventType: values.eventType,
+    category: "editorial",
+    title: `Civic-wire weather location ${values.action}`,
+    summary: `${values.actorName} ${values.action} the weather location “${values.label}.”`,
+    actorName: values.actorName,
+    subjectName: values.label,
+    subjectRef: values.locationId,
+    occurredAt: values.now,
+    utopianDate: formatUtopianDate(new Date(values.now)),
+    gregorianDate: formatGregorianDate(new Date(values.now)),
+    sourceLabel: "Editorial Studio · Weather Locations",
+    sourceUrl: civicPageUrl(request, env, "/editorial"),
+    metadata: {
+      locationId: values.locationId,
+      latitude: values.input.latitude,
+      longitude: values.input.longitude,
+      timezone: values.input.timezone,
+      conditionsMode: values.input.conditionsMode,
+      enabled: values.input.enabled,
+      status: values.input.status,
+      priority: values.input.priority,
+      sortOrder: values.input.sortOrder,
+      treatment: values.input.treatment,
+      refreshMinutes: values.input.refreshMinutes,
+      previousStatus: values.previousStatus || null,
+    },
+  });
+}
+
+async function createTickerWeatherLocation(request, env, input) {
+  const session = await requireEditorialAuthority(request, env);
+  const actorName = tickerActor(session);
+  const values = tickerWeatherLocationInput(input);
+  const locationId = `TIW-${crypto.randomUUID()}`;
+  const locationKey = tickerWeatherLocationKey(values.label, locationId);
+  const now = new Date().toISOString();
+  const event = await prepareWeatherLocationEvent(request, env, {
+    locationId, eventType: "ticker_weather_location_created", action: "added", actorName,
+    label: values.label, now, input: values,
+  });
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO ticker_weather_locations (
+        location_id, location_key, source_id, label, latitude, longitude, timezone,
+        conditions_mode, enabled, status, priority, sort_order, treatment,
+        refresh_minutes, created_by, updated_by, created_at, updated_at
+      ) VALUES (?1, ?2, 'TIS-WEATHER', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15, ?15)
+    `).bind(locationId, locationKey, values.label, values.latitude, values.longitude, values.timezone, values.conditionsMode, values.enabled ? 1 : 0, values.status, values.priority, values.sortOrder, values.treatment, values.refreshMinutes, actorName, now),
+    event.statement,
+  ]);
+  if (values.enabled && values.status === "active") await refreshTickerWeatherLocation(env, locationId, true);
+  const row = await env.DB.prepare("SELECT * FROM ticker_weather_locations WHERE location_id = ?1").bind(locationId).first();
+  return { created: true, location: publicTickerWeatherLocation(row) };
+}
+
+async function updateTickerWeatherLocation(request, env, locationId, input) {
+  const session = await requireEditorialAuthority(request, env);
+  const actorName = tickerActor(session);
+  const existing = await env.DB.prepare("SELECT * FROM ticker_weather_locations WHERE location_id = ?1").bind(locationId).first();
+  if (!existing) throw new ClientError("That weather location was not found.", 404, "ticker_weather_location_not_found");
+  const values = tickerWeatherLocationInput(input, existing);
+  const now = new Date().toISOString();
+  const archivedAt = values.status === "archived" ? existing.archived_at || now : null;
+  const eventType = values.status === "archived" && existing.status !== "archived"
+    ? "ticker_weather_location_archived"
+    : existing.status === "archived" && values.status !== "archived"
+      ? "ticker_weather_location_restored"
+      : "ticker_weather_location_updated";
+  const action = eventType.endsWith("archived") ? "archived" : eventType.endsWith("restored") ? "restored" : "updated";
+  const event = await prepareWeatherLocationEvent(request, env, {
+    locationId, eventType, action, actorName, label: values.label, now, input: values, previousStatus: existing.status,
+  });
+  try {
+    await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE ticker_weather_locations SET
+          label = ?2, latitude = ?3, longitude = ?4, timezone = ?5,
+          conditions_mode = ?6, enabled = ?7, status = ?8, priority = ?9,
+          sort_order = ?10, treatment = ?11, refresh_minutes = ?12,
+          updated_by = ?13, updated_at = ?14, archived_at = ?15
+        WHERE location_id = ?1
+      `).bind(locationId, values.label, values.latitude, values.longitude, values.timezone, values.conditionsMode, values.enabled ? 1 : 0, values.status, values.priority, values.sortOrder, values.treatment, values.refreshMinutes, actorName, now, archivedAt),
+      env.DB.prepare("UPDATE ticker_feed_items SET is_current = 0 WHERE weather_location_id = ?1 AND (?2 = 0 OR ?3 <> 'active')")
+        .bind(locationId, values.enabled ? 1 : 0, values.status),
+      event.statement,
+    ]);
+  } catch (error) {
+    throw weatherLocationConstraint(error) || error;
+  }
+  const coordinatesChanged = Number(existing.latitude) !== values.latitude || Number(existing.longitude) !== values.longitude
+    || existing.conditions_mode !== values.conditionsMode || existing.timezone !== values.timezone;
+  if (values.enabled && values.status === "active" && (coordinatesChanged || !existing.enabled || existing.status !== "active")) {
+    await refreshTickerWeatherLocation(env, locationId, true);
+  }
+  const row = await env.DB.prepare("SELECT * FROM ticker_weather_locations WHERE location_id = ?1").bind(locationId).first();
+  return { updated: true, location: publicTickerWeatherLocation(row) };
+}
+
+async function geocodeTickerWeatherLocations(request, env, url) {
+  await requireEditorialAuthority(request, env);
+  const query = cleanText(url.searchParams.get("q"), 120, false);
+  if (query.length < 2) throw new ClientError("Enter at least two characters to search for a location.", 400, "ticker_weather_search_short");
+  const endpoint = new URL("https://geocoding-api.open-meteo.com/v1/search");
+  endpoint.search = new URLSearchParams({ name: query, count: "8", language: "en", format: "json" }).toString();
+  const response = await fetch(endpoint, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) });
+  if (!response.ok) throw new Error(`The location search returned HTTP ${response.status}.`);
+  const payload = JSON.parse(await readTickerResponse(response));
+  return {
+    results: (Array.isArray(payload.results) ? payload.results : []).slice(0, 8).map((result) => ({
+      id: String(result.id || `${result.latitude},${result.longitude}`),
+      label: [result.name, result.admin1, result.country].filter(Boolean).join(", "),
+      name: cleanText(result.name, 120, false),
+      latitude: Number(result.latitude),
+      longitude: Number(result.longitude),
+      timezone: cleanText(result.timezone || "UTC", 100),
+      country: cleanText(result.country, 120, false),
+      admin1: cleanText(result.admin1, 120, false),
+    })).filter((result) => result.label && Number.isFinite(result.latitude) && Number.isFinite(result.longitude)),
+  };
 }
 
 async function updateTickerFeedItem(request, env, itemId, input) {
@@ -5799,33 +6008,53 @@ function tickerCompassPoint(degrees) {
   return points[Math.round(degrees / 45) % 8];
 }
 
-async function fetchTickerWeather() {
-  const weatherUrl = new URL("https://api.open-meteo.com/v1/forecast");
-  weatherUrl.search = new URLSearchParams({
-    latitude: "-32", longitude: "-120",
-    current: "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m",
-    temperature_unit: "fahrenheit", wind_speed_unit: "mph", timezone: "GMT", cell_selection: "sea",
-  }).toString();
-  const marineUrl = new URL("https://marine-api.open-meteo.com/v1/marine");
-  marineUrl.search = new URLSearchParams({
-    latitude: "-32", longitude: "-120",
-    current: "wave_height,sea_surface_temperature,ocean_current_velocity",
-    length_unit: "imperial", timezone: "GMT", cell_selection: "sea",
-  }).toString();
-  const [weatherResponse, marineResponse] = await Promise.all([
-    fetch(weatherUrl, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) }),
-    fetch(marineUrl, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) }),
-  ]);
-  if (!weatherResponse.ok) throw new Error(`Weather source returned ${weatherResponse.status}.`);
-  const weather = (await weatherResponse.json()).current || {};
-  const marine = marineResponse.ok ? (await marineResponse.json()).current || {} : {};
+async function fetchTickerWeather(location) {
+  const coordinates = { latitude: String(location.latitude), longitude: String(location.longitude) };
+  const mode = location.conditions_mode || "combined";
+  const weatherPromise = mode === "marine" ? Promise.resolve(null) : (() => {
+    const endpoint = new URL("https://api.open-meteo.com/v1/forecast");
+    endpoint.search = new URLSearchParams({
+      ...coordinates,
+      current: "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m",
+      temperature_unit: "fahrenheit",
+      wind_speed_unit: "mph",
+      timezone: location.timezone || "UTC",
+    }).toString();
+    return fetch(endpoint, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) });
+  })();
+  const marinePromise = mode === "land" ? Promise.resolve(null) : (() => {
+    const endpoint = new URL("https://marine-api.open-meteo.com/v1/marine");
+    endpoint.search = new URLSearchParams({
+      ...coordinates,
+      current: "wave_height,sea_surface_temperature,ocean_current_velocity",
+      length_unit: "imperial",
+      timezone: location.timezone || "UTC",
+      cell_selection: "sea",
+    }).toString();
+    return fetch(endpoint, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) });
+  })();
+  const [weatherResponse, marineResponse] = await Promise.all([weatherPromise, marinePromise]);
+  if (weatherResponse && !weatherResponse.ok) throw new Error(`Weather source returned ${weatherResponse.status}.`);
+  if (mode === "marine" && marineResponse && !marineResponse.ok) throw new Error(`Marine source returned ${marineResponse.status}.`);
+  const weather = weatherResponse ? (await weatherResponse.json()).current || {} : {};
+  const marine = marineResponse?.ok ? (await marineResponse.json()).current || {} : {};
+  const parts = [location.label];
+  if (typeof weather.temperature_2m === "number") parts.push(`${Math.round(weather.temperature_2m)}°F`);
+  if (typeof weather.weather_code === "number") parts.push(TICKER_WEATHER_DESCRIPTIONS[weather.weather_code] || "mixed conditions");
+  if (typeof weather.wind_speed_10m === "number") parts.push(`wind ${tickerCompassPoint(weather.wind_direction_10m)} ${Math.round(weather.wind_speed_10m)} mph`);
   const seaFahrenheit = typeof marine.sea_surface_temperature === "number" ? marine.sea_surface_temperature * 9 / 5 + 32 : null;
-  const label = `South Pacific Gyre · ${Math.round(weather.temperature_2m || 0)}°F · ${TICKER_WEATHER_DESCRIPTIONS[weather.weather_code] || "mixed conditions"} · wind ${tickerCompassPoint(weather.wind_direction_10m)} ${Math.round(weather.wind_speed_10m || 0)} mph${seaFahrenheit !== null ? ` · sea ${Math.round(seaFahrenheit)}°F` : ""}${typeof marine.wave_height === "number" ? ` · swell ${marine.wave_height.toFixed(1)} ft` : ""}`;
-  return [{ identity: "south-pacific-weather-current", label, href: "https://open-meteo.com/", publishedAt: new Date().toISOString() }];
+  if (seaFahrenheit !== null) parts.push(`sea ${Math.round(seaFahrenheit)}°F`);
+  if (typeof marine.wave_height === "number") parts.push(`swell ${marine.wave_height.toFixed(1)} ft`);
+  if (parts.length === 1) throw new Error("The weather service returned no current conditions for this location.");
+  return [{
+    identity: `weather-location:${location.location_id}`,
+    label: parts.join(" · "),
+    href: "https://open-meteo.com/",
+    publishedAt: new Date().toISOString(),
+  }];
 }
 
 async function fetchTickerSourceItems(source) {
-  if (source.source_key === "south-pacific-weather") return fetchTickerWeather();
   const feedUrl = tickerRssUrl(source.endpoint_url);
   const response = await fetch(feedUrl, {
     headers: { Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9" },
@@ -5863,10 +6092,74 @@ async function storeTickerSourceItems(env, source, items) {
   return items.length;
 }
 
+async function storeTickerWeatherItems(env, location, items) {
+  const now = new Date().toISOString();
+  const statements = [
+    env.DB.prepare(`
+      UPDATE ticker_feed_items SET is_current = 0
+      WHERE weather_location_id = ?1 OR (source_id = 'TIS-WEATHER' AND weather_location_id IS NULL)
+    `).bind(location.location_id),
+  ];
+  for (const item of items) {
+    const itemKey = await digest(`TIS-WEATHER\n${location.location_id}\n${item.identity}`);
+    const itemId = `TIF-${itemKey.slice(0, 32)}`;
+    statements.push(env.DB.prepare(`
+      INSERT INTO ticker_feed_items (
+        item_id, source_id, item_key, label, href, published_at, fetched_at, is_current, weather_location_id
+      ) VALUES (?1, 'TIS-WEATHER', ?2, ?3, ?4, ?5, ?6, 1, ?7)
+      ON CONFLICT(item_key) DO UPDATE SET
+        label = excluded.label, href = excluded.href, published_at = excluded.published_at,
+        fetched_at = excluded.fetched_at, is_current = 1, weather_location_id = excluded.weather_location_id
+    `).bind(itemId, itemKey, item.label, item.href, item.publishedAt, now, location.location_id));
+  }
+  statements.push(env.DB.prepare(`
+    UPDATE ticker_weather_locations SET last_checked_at = ?2, last_success_at = ?2,
+      last_error = NULL, updated_at = CASE WHEN updated_at > ?2 THEN updated_at ELSE ?2 END
+    WHERE location_id = ?1
+  `).bind(location.location_id, now));
+  statements.push(env.DB.prepare(`
+    UPDATE ticker_sources SET last_checked_at = ?1, last_success_at = ?1, last_error = NULL
+    WHERE source_id = 'TIS-WEATHER'
+  `).bind(now));
+  await env.DB.batch(statements);
+  return items.length;
+}
+
+async function refreshTickerWeatherLocation(env, locationId, force = false) {
+  const location = await env.DB.prepare("SELECT * FROM ticker_weather_locations WHERE location_id = ?1").bind(locationId).first();
+  if (!location || !location.enabled || location.status !== "active") return { refreshed: false, reason: "inactive" };
+  if (!force && location.last_checked_at && Date.now() - Date.parse(location.last_checked_at) < Number(location.refresh_minutes) * 60_000) {
+    return { refreshed: false, reason: "not-due" };
+  }
+  try {
+    const items = await fetchTickerWeather(location);
+    return { refreshed: true, count: await storeTickerWeatherItems(env, location, items) };
+  } catch (error) {
+    const now = new Date().toISOString();
+    const message = cleanText(String(error?.message || error), 300, false);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE ticker_weather_locations SET last_checked_at = ?2, last_error = ?3 WHERE location_id = ?1")
+        .bind(locationId, now, message),
+      env.DB.prepare("UPDATE ticker_sources SET last_checked_at = ?1, last_error = ?2 WHERE source_id = 'TIS-WEATHER'")
+        .bind(now, message),
+    ]);
+    console.error(JSON.stringify({ level: "error", message: "ticker-weather-refresh-failed", locationId, error: String(error) }));
+    return { refreshed: false, reason: "failed" };
+  }
+}
+
 async function refreshTickerSourceById(env, sourceId, force = false) {
   const source = await env.DB.prepare("SELECT * FROM ticker_sources WHERE source_id = ?1").bind(sourceId).first();
   if (!source || !source.enabled || source.status !== "active") return { refreshed: false, reason: "inactive" };
-  if (source.source_type !== "rss" && source.source_key !== "south-pacific-weather") return { refreshed: false, reason: "generated" };
+  if (source.source_key === "south-pacific-weather") {
+    const result = await env.DB.prepare(`
+      SELECT location_id FROM ticker_weather_locations WHERE enabled = 1 AND status = 'active'
+      ORDER BY priority DESC, sort_order ASC
+    `).all();
+    const outcomes = await Promise.all((result.results || []).map((row) => refreshTickerWeatherLocation(env, row.location_id, force)));
+    return { refreshed: outcomes.some((outcome) => outcome.refreshed), count: outcomes.reduce((sum, outcome) => sum + Number(outcome.count || 0), 0) };
+  }
+  if (source.source_type !== "rss") return { refreshed: false, reason: "generated" };
   if (!force && source.last_checked_at && Date.now() - Date.parse(source.last_checked_at) < Number(source.refresh_minutes) * 60_000) {
     return { refreshed: false, reason: "not-due" };
   }
@@ -5887,14 +6180,23 @@ async function syncTickerSources(env) {
   const result = await env.DB.prepare(`
     SELECT * FROM ticker_sources
     WHERE enabled = 1 AND status = 'active'
-      AND (source_type = 'rss' OR source_key = 'south-pacific-weather')
+      AND source_type = 'rss'
     ORDER BY priority DESC, sort_order ASC
     LIMIT 50
   `).all();
-  const outcomes = await Promise.allSettled((result.results || []).map((source) => refreshTickerSourceById(env, source.source_id)));
+  const weatherResult = await env.DB.prepare(`
+    SELECT location_id FROM ticker_weather_locations
+    WHERE enabled = 1 AND status = 'active'
+    ORDER BY priority DESC, sort_order ASC LIMIT 50
+  `).all();
+  const work = [
+    ...(result.results || []).map((source) => refreshTickerSourceById(env, source.source_id)),
+    ...(weatherResult.results || []).map((location) => refreshTickerWeatherLocation(env, location.location_id)),
+  ];
+  const outcomes = await Promise.allSettled(work);
   const refreshed = outcomes.filter((outcome) => outcome.status === "fulfilled" && outcome.value.refreshed).length;
-  console.log(JSON.stringify({ level: "info", message: "ticker-sources-synchronized", sources: outcomes.length, refreshed }));
-  return { sources: outcomes.length, refreshed };
+  console.log(JSON.stringify({ level: "info", message: "ticker-sources-synchronized", sources: result.results?.length || 0, weatherLocations: weatherResult.results?.length || 0, refreshed }));
+  return { sources: result.results?.length || 0, weatherLocations: weatherResult.results?.length || 0, refreshed };
 }
 
 function tickerPrefixedLabel(prefix, label) {
@@ -5913,9 +6215,14 @@ async function currentTickerItems(env) {
       ORDER BY priority DESC, sort_order ASC, created_at ASC
     `).bind(now).all(),
     env.DB.prepare(`
-      SELECT i.* FROM ticker_feed_items i
+      SELECT i.*,
+        w.label AS weather_label, w.priority AS weather_priority,
+        w.sort_order AS weather_sort_order, w.treatment AS weather_treatment
+      FROM ticker_feed_items i
       JOIN ticker_sources s ON s.source_id = i.source_id
+      LEFT JOIN ticker_weather_locations w ON w.location_id = i.weather_location_id
       WHERE i.is_current = 1 AND i.suppressed = 0 AND s.enabled = 1 AND s.status = 'active'
+        AND (i.weather_location_id IS NULL OR (w.enabled = 1 AND w.status = 'active'))
       ORDER BY COALESCE(i.published_at, i.fetched_at) DESC
     `).all(),
     env.DB.prepare("SELECT COUNT(*) AS active FROM citizens WHERE standing = 'active'").first(),
@@ -5957,8 +6264,16 @@ async function currentTickerItems(env) {
     } else if (source.source_key === "transparency-ledger") {
       items.push({ ...base, itemId: `${source.source_id}:current`, recordType: "system", kind: "ledger", label: tickerPrefixedLabel(source.prefix, `Public record · Transparency Ledger operational · Sequence ${Number(ledgerRow?.sequence || 0)}`), href: source.credit_url || "/transparency-ledger" });
     } else {
-      for (const feed of (feedsBySource.get(source.source_id) || []).slice(0, Number(source.item_limit))) {
-        items.push({ ...base, itemId: feed.item_id, recordType: "feed", kind: source.source_key === "south-pacific-weather" ? "weather" : "rss", label: tickerPrefixedLabel(source.prefix, feed.label), href: feed.href || source.credit_url || null });
+      const sourceFeeds = feedsBySource.get(source.source_id) || [];
+      for (const feed of source.source_key === "south-pacific-weather" ? sourceFeeds : sourceFeeds.slice(0, Number(source.item_limit))) {
+        const weatherBase = feed.weather_location_id ? {
+          ...base,
+          sourceLabel: `${source.label} · ${feed.weather_label || "Location"}`,
+          priority: Number(feed.weather_priority),
+          sortOrder: Number(feed.weather_sort_order),
+          treatment: feed.weather_treatment || "standard",
+        } : base;
+        items.push({ ...weatherBase, itemId: feed.item_id, recordType: "feed", kind: feed.weather_location_id ? "weather" : "rss", label: tickerPrefixedLabel(source.prefix, feed.label), href: feed.href || source.credit_url || null });
       }
     }
   }
@@ -5984,8 +6299,9 @@ async function publicTicker(request, env) {
 
 async function tickerManager(request, env) {
   const session = await requireEditorialAuthority(request, env);
-  const [sourceResult, announcementResult, feedResult, currentItems] = await Promise.all([
+  const [sourceResult, weatherResult, announcementResult, feedResult, currentItems] = await Promise.all([
     env.DB.prepare("SELECT * FROM ticker_sources ORDER BY status = 'archived', priority DESC, sort_order ASC, label COLLATE NOCASE").all(),
+    env.DB.prepare("SELECT * FROM ticker_weather_locations ORDER BY status = 'archived', priority DESC, sort_order ASC, label COLLATE NOCASE").all(),
     env.DB.prepare("SELECT * FROM ticker_announcements ORDER BY status = 'archived', priority DESC, sort_order ASC, updated_at DESC").all(),
     env.DB.prepare(`
       SELECT i.* FROM ticker_feed_items i
@@ -6000,6 +6316,7 @@ async function tickerManager(request, env) {
     currentItems,
     announcements: (announcementResult.results || []).map(publicAnnouncement),
     sources: (sourceResult.results || []).map(publicTickerSource),
+    weatherLocations: (weatherResult.results || []).map(publicTickerWeatherLocation),
     feedItems: (feedResult.results || []).map(publicTickerFeedItem),
     ledgerPolicy: "Every human ticker configuration, notice, suppression, restoration, and archival change is appended to the Transparency Ledger under the authenticated civic identity.",
   };
@@ -6225,6 +6542,9 @@ async function route(request, env) {
   if (request.method === "GET" && path === "/v4/editorial/ticker") {
     return json(request, await tickerManager(request, env), { headers: { "Cache-Control": "no-store" } });
   }
+  if (request.method === "GET" && path === "/v4/editorial/ticker/weather-locations/geocode") {
+    return json(request, await geocodeTickerWeatherLocations(request, env, url), { headers: { "Cache-Control": "no-store" } });
+  }
   if (request.method === "GET" && path === "/v3/editorial/analytics") {
     return json(request, await editorialAnalytics(request, env, url), { headers: { "Cache-Control": "no-store" } });
   }
@@ -6414,6 +6734,12 @@ async function route(request, env) {
     return json(request, written, { status: 201, headers: { "Cache-Control": "no-store" } });
   }
 
+  if (request.method === "POST" && path === "/v4/editorial/ticker/weather-locations") {
+    const body = await readJson(request);
+    const written = await createTickerWeatherLocation(request, env, body);
+    return json(request, written, { status: 201, headers: { "Cache-Control": "no-store" } });
+  }
+
   const tickerAnnouncementAction = path.match(/^\/v4\/editorial\/ticker\/announcements\/([A-Za-z0-9-]+)$/);
   if (request.method === "PATCH" && tickerAnnouncementAction) {
     const body = await readJson(request);
@@ -6430,6 +6756,18 @@ async function route(request, env) {
   if (request.method === "POST" && tickerSourceRefresh) {
     await requireEditorialAuthority(request, env);
     return json(request, await refreshTickerSourceById(env, tickerSourceRefresh[1], true), { headers: { "Cache-Control": "no-store" } });
+  }
+
+  const tickerWeatherLocationAction = path.match(/^\/v4\/editorial\/ticker\/weather-locations\/([A-Za-z0-9-]+)$/);
+  if (request.method === "PATCH" && tickerWeatherLocationAction) {
+    const body = await readJson(request);
+    return json(request, await updateTickerWeatherLocation(request, env, tickerWeatherLocationAction[1], body), { headers: { "Cache-Control": "no-store" } });
+  }
+
+  const tickerWeatherLocationRefresh = path.match(/^\/v4\/editorial\/ticker\/weather-locations\/([A-Za-z0-9-]+)\/refresh$/);
+  if (request.method === "POST" && tickerWeatherLocationRefresh) {
+    await requireEditorialAuthority(request, env);
+    return json(request, await refreshTickerWeatherLocation(env, tickerWeatherLocationRefresh[1], true), { headers: { "Cache-Control": "no-store" } });
   }
 
   const tickerFeedItemAction = path.match(/^\/v4\/editorial\/ticker\/feed-items\/([A-Za-z0-9-]+)$/);

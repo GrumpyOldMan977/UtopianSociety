@@ -6,28 +6,36 @@ import {
   createLocalEditorialDraft,
   createLocalTickerAnnouncement,
   createTickerSource,
+  createTickerWeatherLocation,
   getEditorialAnalytics,
   getLocalEditorialStatus,
   getLocalWordpressHandoff,
   getTickerManager,
   refreshTickerSource,
+  refreshTickerWeatherLocation,
+  searchTickerWeatherLocations,
   setTickerFeedItemSuppressed,
   synchronizeWordpressPublications,
   updateTickerAnnouncement,
   updateTickerSource,
+  updateTickerWeatherLocation,
   type EditorialAnalytics,
   type EditorialStatus,
   type TickerAnnouncement,
   type TickerManager,
   type TickerSource,
   type TickerTreatment,
+  type TickerWeatherLocation,
+  type TickerWeatherSearchResult,
 } from "../lib/civic-ledger";
 
 const civicAuthor = "Adreto Nagdo Senoviros";
 type NoticeDraft = { label: string; href: string; status: "draft" | "scheduled" | "active" | "paused"; startsAt: string; endsAt: string; priority: number; sortOrder: number; treatment: TickerTreatment };
 type SourceDraft = { label: string; endpointUrl: string; creditUrl: string; prefix: string; enabled: boolean; status: "active" | "paused" | "archived"; priority: number; sortOrder: number; treatment: TickerTreatment; itemLimit: number; refreshMinutes: number };
+type WeatherDraft = { label: string; latitude: number; longitude: number; timezone: string; conditionsMode: "land" | "marine" | "combined"; enabled: boolean; status: "active" | "paused" | "archived"; priority: number; sortOrder: number; treatment: TickerTreatment; refreshMinutes: number };
 const emptyNotice: NoticeDraft = { label: "", href: "", status: "draft", startsAt: "", endsAt: "", priority: 10, sortOrder: 0, treatment: "standard" };
 const emptySource: SourceDraft = { label: "", endpointUrl: "", creditUrl: "", prefix: "", enabled: true, status: "active", priority: 10, sortOrder: 0, treatment: "standard", itemLimit: 3, refreshMinutes: 5 };
+const emptyWeather: WeatherDraft = { label: "", latitude: 0, longitude: 0, timezone: "UTC", conditionsMode: "land", enabled: true, status: "active", priority: 10, sortOrder: 0, treatment: "standard", refreshMinutes: 5 };
 
 const rankOptions = [
   { value: 100, label: "Urgent" },
@@ -63,6 +71,10 @@ function rankLabel(priority: number) {
   return priority >= 75 ? "Urgent" : priority >= 35 ? "High" : priority >= 5 ? "Normal" : "Background";
 }
 
+function rankValue(priority: number) {
+  return priority >= 75 ? 100 : priority >= 35 ? 50 : priority >= 5 ? 10 : 0;
+}
+
 function treatmentLabel(treatment: TickerTreatment) {
   return treatmentOptions.find((option) => option.value === treatment)?.label || treatment;
 }
@@ -71,6 +83,12 @@ function sourceHealth(source: TickerSource) {
   if (source.lastError) return `Needs attention · ${source.lastError}`;
   if (source.lastSuccessAt) return `Healthy · refreshed ${new Date(source.lastSuccessAt).toLocaleString()}`;
   if (source.sourceType === "system" && source.sourceKey !== "south-pacific-weather") return "Generated live";
+  return "Awaiting first refresh";
+}
+
+function weatherHealth(location: TickerWeatherLocation) {
+  if (location.lastError) return `Needs attention · ${location.lastError}`;
+  if (location.lastSuccessAt) return `Healthy · refreshed ${new Date(location.lastSuccessAt).toLocaleString()}`;
   return "Awaiting first refresh";
 }
 
@@ -85,6 +103,10 @@ export function EditorialStudio() {
   const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null);
   const [sourceDraft, setSourceDraft] = useState<SourceDraft>({ ...emptySource });
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  const [weatherDraft, setWeatherDraft] = useState<WeatherDraft>({ ...emptyWeather });
+  const [editingWeatherId, setEditingWeatherId] = useState<string | null>(null);
+  const [weatherSearch, setWeatherSearch] = useState("");
+  const [weatherSearchResults, setWeatherSearchResults] = useState<TickerWeatherSearchResult[]>([]);
   const [draft, setDraft] = useState({ title: "", slug: "", excerpt: "", contentMarkdown: "", featuredImage: "" });
 
   const refresh = useCallback(async () => {
@@ -105,6 +127,7 @@ export function EditorialStudio() {
   const draftCount = status?.publicationCounts.find((row) => row.status === "draft")?.count ?? 0;
   const activeTickerCount = ticker?.currentItems.length ?? 0;
   const sourceById = useMemo(() => new Map((ticker?.sources ?? []).map((source) => [source.sourceId, source])), [ticker]);
+  const activeWeatherCount = useMemo(() => (ticker?.weatherLocations ?? []).filter((location) => location.enabled && location.status === "active").length, [ticker]);
   const suppressedFeedItems = useMemo(() => (ticker?.feedItems ?? []).filter((item) => item.suppressed), [ticker]);
 
   async function runTickerMutation(key: string, action: () => Promise<unknown>, success: string) {
@@ -151,7 +174,7 @@ export function EditorialStudio() {
       status: item.status === "expired" || item.status === "archived" ? "paused" : item.status as "draft" | "scheduled" | "active" | "paused",
       startsAt: localDateTime(item.startsAt),
       endsAt: localDateTime(item.endsAt),
-      priority: item.priority,
+      priority: rankValue(item.priority),
       sortOrder: item.sortOrder,
       treatment: item.treatment,
     });
@@ -179,13 +202,71 @@ export function EditorialStudio() {
       prefix: source.prefix,
       enabled: source.enabled,
       status: source.status,
-      priority: source.priority,
+      priority: rankValue(source.priority),
       sortOrder: source.sortOrder,
       treatment: source.treatment,
       itemLimit: source.itemLimit,
       refreshMinutes: source.refreshMinutes,
     });
     document.getElementById("ticker-source-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+
+  async function findWeatherLocation() {
+    setBusy("weather-search");
+    setError("");
+    try {
+      const result = await searchTickerWeatherLocations(weatherSearch);
+      setWeatherSearchResults(result.results);
+      if (!result.results.length) setNotice("No matching locations were found. Coordinates can still be entered manually.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The location search could not be completed.");
+    } finally { setBusy(""); }
+  }
+
+  function chooseWeatherResult(result: TickerWeatherSearchResult) {
+    setWeatherDraft((current) => ({
+      ...current,
+      label: result.label,
+      latitude: result.latitude,
+      longitude: result.longitude,
+      timezone: result.timezone || "UTC",
+      conditionsMode: "land",
+    }));
+    setWeatherSearchResults([]);
+  }
+
+  async function saveWeatherLocation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await runTickerMutation("weather", () => editingWeatherId
+      ? updateTickerWeatherLocation(editingWeatherId, weatherDraft)
+      : createTickerWeatherLocation(weatherDraft), editingWeatherId
+      ? "Weather location updated and recorded in the Transparency Ledger."
+      : "Weather location added and recorded in the Transparency Ledger.");
+    setWeatherDraft({ ...emptyWeather });
+    setEditingWeatherId(null);
+    setWeatherSearch("");
+    setWeatherSearchResults([]);
+  }
+
+  function editWeatherLocation(location: TickerWeatherLocation) {
+    setEditingWeatherId(location.locationId);
+    setWeatherDraft({
+      label: location.label,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      timezone: location.timezone,
+      conditionsMode: location.conditionsMode,
+      enabled: location.enabled,
+      status: location.status,
+      priority: rankValue(location.priority),
+      sortOrder: location.sortOrder,
+      treatment: location.treatment,
+      refreshMinutes: location.refreshMinutes,
+    });
+    setWeatherSearch("");
+    setWeatherSearchResults([]);
+    document.getElementById("ticker-weather-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function saveDraft(event: FormEvent<HTMLFormElement>) {
@@ -293,10 +374,33 @@ export function EditorialStudio() {
       </tbody></table></div>
     </section>
 
+    <section className="editorial-source-manager" aria-labelledby="weather-manager-title">
+      <header><span>Required source</span><h2 id="weather-manager-title">Weather Locations</h2><p>Add each Society site or place represented on the civic wire. At least one location remains active.</p></header>
+      <div className="editorial-table-wrap"><table className="editorial-table"><thead><tr><th>Location</th><th>Conditions</th><th>State</th><th>Hierarchy</th><th>Health</th><th>Actions</th></tr></thead><tbody>
+        {ticker?.weatherLocations.length ? ticker.weatherLocations.map((location) => {
+          const isOnlyActive = location.enabled && location.status === "active" && activeWeatherCount === 1;
+          return <tr key={location.locationId}><td><strong>{location.label}</strong><small>{location.latitude.toFixed(4)}, {location.longitude.toFixed(4)} · {location.timezone}</small></td><td><strong>{location.conditionsMode}</strong><small>{treatmentLabel(location.treatment)} · {location.refreshMinutes} min</small></td><td><span className={`editorial-status is-${location.status}`}>{location.status}</span><small>{location.enabled ? "Enabled" : "Disabled"}</small></td><td><strong>{rankLabel(location.priority)}</strong><small>order {location.sortOrder}</small></td><td className={location.lastError ? "is-health-error" : ""}>{weatherHealth(location)}</td><td className="editorial-table-actions"><button type="button" onClick={() => editWeatherLocation(location)}>Configure</button>{location.status !== "archived" ? <><button type="button" title={isOnlyActive ? "At least one weather location must remain active." : undefined} disabled={isOnlyActive || busy === `weather-state:${location.locationId}`} onClick={() => void runTickerMutation(`weather-state:${location.locationId}`, () => updateTickerWeatherLocation(location.locationId, { status: location.status === "paused" ? "active" : "paused", enabled: location.status === "paused" ? true : location.enabled }), `Weather location ${location.status === "paused" ? "resumed" : "paused"} and recorded in the Transparency Ledger.`)}>{location.status === "paused" ? "Resume" : "Pause"}</button><button type="button" disabled={busy === `weather-refresh:${location.locationId}` || location.status !== "active" || !location.enabled} onClick={() => void runTickerMutation(`weather-refresh:${location.locationId}`, async () => { const result = await refreshTickerWeatherLocation(location.locationId); if (result.reason === "failed") throw new Error("The weather location could not refresh. Its health message has been retained for review."); return result; }, "Weather location refreshed.")}>Refresh</button><button type="button" className="is-danger" title={isOnlyActive ? "Add or activate another weather location before archiving this one." : undefined} disabled={isOnlyActive || busy === `weather-archive:${location.locationId}`} onClick={() => void runTickerMutation(`weather-archive:${location.locationId}`, () => updateTickerWeatherLocation(location.locationId, { status: "archived", enabled: false }), "Weather location archived and recorded in the Transparency Ledger.")}>Archive</button></> : <button type="button" onClick={() => void runTickerMutation(`weather-restore:${location.locationId}`, () => updateTickerWeatherLocation(location.locationId, { status: "paused", enabled: false }), "Weather location restored in a paused state and recorded in the Transparency Ledger.")}>Restore paused</button>}</td></tr>;
+        }) : <tr><td colSpan={6}>The required weather collection has no locations.</td></tr>}
+      </tbody></table></div>
+
+      <form className="editorial-sheet source-editor" id="ticker-weather-editor" onSubmit={saveWeatherLocation}>
+        <header><span>{editingWeatherId ? "Configure location" : "Add location"}</span><h2>{editingWeatherId ? "Weather location settings" : "Add a weather location"}</h2><p>Search by place name or enter coordinates directly.</p></header>
+        <div className="editorial-field-row"><label>Find a place<input maxLength={120} placeholder="Chicago, Tokyo, South Pacific Gyre…" value={weatherSearch} onChange={(event) => setWeatherSearch(event.target.value)} /></label><div className="editorial-inline-action"><button type="button" disabled={busy === "weather-search" || weatherSearch.trim().length < 2} onClick={() => void findWeatherLocation()}>{busy === "weather-search" ? "Searching…" : "Search"}</button></div></div>
+        {weatherSearchResults.length > 0 && <div className="editorial-search-results" aria-label="Location search results">{weatherSearchResults.map((result) => <button type="button" key={result.id} onClick={() => chooseWeatherResult(result)}><strong>{result.label}</strong><small>{result.latitude.toFixed(4)}, {result.longitude.toFixed(4)} · {result.timezone}</small></button>)}</div>}
+        <label>Public location name<input required maxLength={120} value={weatherDraft.label} onChange={(event) => setWeatherDraft((current) => ({ ...current, label: event.target.value }))} /></label>
+        <div className="editorial-field-row"><label>Latitude<input required type="number" step="0.000001" min={-90} max={90} value={weatherDraft.latitude} onChange={(event) => setWeatherDraft((current) => ({ ...current, latitude: Number(event.target.value) }))} /></label><label>Longitude<input required type="number" step="0.000001" min={-180} max={180} value={weatherDraft.longitude} onChange={(event) => setWeatherDraft((current) => ({ ...current, longitude: Number(event.target.value) }))} /></label></div>
+        <div className="editorial-field-row"><label>Timezone<input required maxLength={100} placeholder="America/Chicago" value={weatherDraft.timezone} onChange={(event) => setWeatherDraft((current) => ({ ...current, timezone: event.target.value }))} /></label><label>Conditions<select value={weatherDraft.conditionsMode} onChange={(event) => setWeatherDraft((current) => ({ ...current, conditionsMode: event.target.value as WeatherDraft["conditionsMode"] }))}><option value="land">Land weather</option><option value="marine">Marine conditions</option><option value="combined">Land and marine</option></select></label></div>
+        <div className="editorial-field-row"><label>Rank<select value={weatherDraft.priority} onChange={(event) => setWeatherDraft((current) => ({ ...current, priority: Number(event.target.value) }))}>{rankOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label>Order within rank<input type="number" min={-1000} max={1000} value={weatherDraft.sortOrder} onChange={(event) => setWeatherDraft((current) => ({ ...current, sortOrder: Number(event.target.value) }))} /></label></div>
+        <div className="editorial-field-row"><label>Treatment<select value={weatherDraft.treatment} onChange={(event) => setWeatherDraft((current) => ({ ...current, treatment: event.target.value as TickerTreatment }))}>{treatmentOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label>Refresh interval<select value={weatherDraft.refreshMinutes} onChange={(event) => setWeatherDraft((current) => ({ ...current, refreshMinutes: Number(event.target.value) }))}><option value={5}>Every 5 minutes</option><option value={15}>Every 15 minutes</option><option value={30}>Every 30 minutes</option><option value={60}>Every hour</option><option value={360}>Every 6 hours</option><option value={1440}>Daily</option></select></label></div>
+        <div className="editorial-field-row"><label>Status<select value={weatherDraft.status} onChange={(event) => setWeatherDraft((current) => ({ ...current, status: event.target.value as WeatherDraft["status"] }))}><option value="active">Active</option><option value="paused">Paused</option><option value="archived">Archived</option></select></label><label className="editorial-checkbox"><input type="checkbox" checked={weatherDraft.enabled} onChange={(event) => setWeatherDraft((current) => ({ ...current, enabled: event.target.checked }))} />Enabled for public rotation</label></div>
+        <footer><span>Actor · {ticker?.actor || "Authenticated representative"}</span><div className="editorial-button-row"><button disabled={busy === "weather"}>{busy === "weather" ? "Saving…" : editingWeatherId ? "Save location settings" : "Add weather location"}</button>{editingWeatherId && <button type="button" className="is-secondary" onClick={() => { setEditingWeatherId(null); setWeatherDraft({ ...emptyWeather }); setWeatherSearch(""); setWeatherSearchResults([]); }}>Cancel edit</button>}</div></footer>
+      </form>
+    </section>
+
     <section className="editorial-source-manager" aria-labelledby="source-manager-title">
       <header><span>Sources</span><h2 id="source-manager-title">Source Manager</h2><p>Manage built-in sources and RSS or Atom feeds.</p></header>
       <div className="editorial-table-wrap"><table className="editorial-table"><thead><tr><th>Source</th><th>State</th><th>Hierarchy</th><th>Defaults</th><th>Health</th><th>Actions</th></tr></thead><tbody>
-        {ticker?.sources.map((source) => <tr key={source.sourceId}><td><strong>{source.label}</strong><small>{source.builtIn ? `Built-in ${source.sourceType}` : "Custom RSS"}{source.prefix ? ` · prefix “${source.prefix}”` : ""}</small></td><td><span className={`editorial-status is-${source.status}`}>{source.status}</span><small>{source.enabled ? "Enabled" : "Disabled"}</small></td><td><strong>{rankLabel(source.priority)}</strong><small>order {source.sortOrder}</small></td><td>{treatmentLabel(source.treatment)}<small>{source.sourceType === "rss" || source.sourceKey === "south-pacific-weather" ? `${source.itemLimit} item${source.itemLimit === 1 ? "" : "s"} · ${source.refreshMinutes} min` : "Generated live"}</small></td><td className={source.lastError ? "is-health-error" : ""}>{sourceHealth(source)}</td><td className="editorial-table-actions"><button type="button" onClick={() => editSource(source)}>Configure</button>{source.status !== "archived" ? <button type="button" disabled={busy === `source-state:${source.sourceId}`} onClick={() => void runTickerMutation(`source-state:${source.sourceId}`, () => updateTickerSource(source.sourceId, { status: source.status === "paused" ? "active" : "paused", enabled: source.status === "paused" ? true : source.enabled }), `Source ${source.status === "paused" ? "resumed" : "paused"} and recorded in the Transparency Ledger.`)}>{source.status === "paused" ? "Resume" : "Pause"}</button> : <button type="button" onClick={() => void runTickerMutation(`source-restore:${source.sourceId}`, () => updateTickerSource(source.sourceId, { status: "paused", enabled: false }), "Source restored in a paused state and recorded in the Transparency Ledger.")}>Restore paused</button>}{(source.sourceType === "rss" || source.sourceKey === "south-pacific-weather") && source.status === "active" && <button type="button" disabled={busy === `source-refresh:${source.sourceId}`} onClick={() => void runTickerMutation(`source-refresh:${source.sourceId}`, async () => { const result = await refreshTickerSource(source.sourceId); if (result.reason === "failed") throw new Error("The source could not refresh. Its health message has been retained for review."); return result; }, "Source refresh completed.")}>Refresh</button>}{!source.builtIn && source.status !== "archived" && <button type="button" className="is-danger" onClick={() => void runTickerMutation(`source-archive:${source.sourceId}`, () => updateTickerSource(source.sourceId, { status: "archived", enabled: false }), "RSS source archived and recorded in the Transparency Ledger.")}>Archive</button>}</td></tr>)}
+        {ticker?.sources.map((source) => <tr key={source.sourceId}><td><strong>{source.label}</strong><small>{source.required ? "Required system source" : source.builtIn ? `Built-in ${source.sourceType}` : "Custom RSS"}{source.prefix ? ` · prefix “${source.prefix}”` : ""}</small></td><td><span className={`editorial-status is-${source.status}`}>{source.status}</span><small>{source.enabled ? "Enabled" : "Disabled"}</small></td><td><strong>{rankLabel(source.priority)}</strong><small>order {source.sortOrder}</small></td><td>{treatmentLabel(source.treatment)}<small>{source.sourceType === "rss" ? `${source.itemLimit} item${source.itemLimit === 1 ? "" : "s"} · ${source.refreshMinutes} min` : source.sourceKey === "south-pacific-weather" ? `${ticker.weatherLocations.filter((location) => location.enabled && location.status === "active").length} active locations` : "Generated live"}</small></td><td className={source.lastError ? "is-health-error" : ""}>{sourceHealth(source)}</td><td className="editorial-table-actions"><button type="button" onClick={() => editSource(source)}>Configure</button>{!source.required && (source.status !== "archived" ? <button type="button" disabled={busy === `source-state:${source.sourceId}`} onClick={() => void runTickerMutation(`source-state:${source.sourceId}`, () => updateTickerSource(source.sourceId, { status: source.status === "paused" ? "active" : "paused", enabled: source.status === "paused" ? true : source.enabled }), `Source ${source.status === "paused" ? "resumed" : "paused"} and recorded in the Transparency Ledger.`)}>{source.status === "paused" ? "Resume" : "Pause"}</button> : <button type="button" onClick={() => void runTickerMutation(`source-restore:${source.sourceId}`, () => updateTickerSource(source.sourceId, { status: "paused", enabled: false }), "Source restored in a paused state and recorded in the Transparency Ledger.")}>Restore paused</button>)}{(source.sourceType === "rss" || source.sourceKey === "south-pacific-weather") && source.status === "active" && <button type="button" disabled={busy === `source-refresh:${source.sourceId}`} onClick={() => void runTickerMutation(`source-refresh:${source.sourceId}`, async () => { const result = await refreshTickerSource(source.sourceId); if (result.reason === "failed") throw new Error("The source could not refresh. Its health message has been retained for review."); return result; }, "Source refresh completed.")}>Refresh</button>}{!source.builtIn && source.status !== "archived" && <button type="button" className="is-danger" onClick={() => void runTickerMutation(`source-archive:${source.sourceId}`, () => updateTickerSource(source.sourceId, { status: "archived", enabled: false }), "RSS source archived and recorded in the Transparency Ledger.")}>Archive</button>}</td></tr>)}
       </tbody></table></div>
 
       <form className="editorial-sheet source-editor" id="ticker-source-editor" onSubmit={saveSource}>
@@ -306,8 +410,8 @@ export function EditorialStudio() {
         <label>Credit or source page · optional<input placeholder="https://example.org/news" value={sourceDraft.creditUrl} onChange={(event) => setSourceDraft((current) => ({ ...current, creditUrl: event.target.value }))} /></label>
         <div className="editorial-field-row"><label>Rank<select value={sourceDraft.priority} onChange={(event) => setSourceDraft((current) => ({ ...current, priority: Number(event.target.value) }))}>{rankOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label>Order within rank<input type="number" min={-1000} max={1000} value={sourceDraft.sortOrder} onChange={(event) => setSourceDraft((current) => ({ ...current, sortOrder: Number(event.target.value) }))} /></label></div>
         <div className="editorial-field-row"><label>Default treatment<select value={sourceDraft.treatment} onChange={(event) => setSourceDraft((current) => ({ ...current, treatment: event.target.value as TickerTreatment }))}>{treatmentOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label>Items per refresh<input type="number" min={1} max={10} value={sourceDraft.itemLimit} onChange={(event) => setSourceDraft((current) => ({ ...current, itemLimit: Number(event.target.value) }))} /></label></div>
-        <div className="editorial-field-row"><label>Refresh interval<select value={sourceDraft.refreshMinutes} onChange={(event) => setSourceDraft((current) => ({ ...current, refreshMinutes: Number(event.target.value) }))}><option value={5}>Every 5 minutes</option><option value={15}>Every 15 minutes</option><option value={30}>Every 30 minutes</option><option value={60}>Every hour</option><option value={360}>Every 6 hours</option><option value={1440}>Daily</option></select></label><label>Status<select value={sourceDraft.status} onChange={(event) => setSourceDraft((current) => ({ ...current, status: event.target.value as typeof current.status }))}><option value="active">Active</option><option value="paused">Paused</option><option value="archived">Archived</option></select></label></div>
-        <label className="editorial-checkbox"><input type="checkbox" checked={sourceDraft.enabled} onChange={(event) => setSourceDraft((current) => ({ ...current, enabled: event.target.checked }))} />Enabled for public rotation</label>
+        <div className="editorial-field-row"><label>Refresh interval<select value={sourceDraft.refreshMinutes} onChange={(event) => setSourceDraft((current) => ({ ...current, refreshMinutes: Number(event.target.value) }))}><option value={5}>Every 5 minutes</option><option value={15}>Every 15 minutes</option><option value={30}>Every 30 minutes</option><option value={60}>Every hour</option><option value={360}>Every 6 hours</option><option value={1440}>Daily</option></select></label><label>Status<select disabled={Boolean(editingSourceId && sourceById.get(editingSourceId)?.required)} value={sourceDraft.status} onChange={(event) => setSourceDraft((current) => ({ ...current, status: event.target.value as typeof current.status }))}><option value="active">Active</option><option value="paused">Paused</option><option value="archived">Archived</option></select></label></div>
+        <label className="editorial-checkbox"><input type="checkbox" disabled={Boolean(editingSourceId && sourceById.get(editingSourceId)?.required)} checked={sourceDraft.enabled} onChange={(event) => setSourceDraft((current) => ({ ...current, enabled: event.target.checked }))} />{editingSourceId && sourceById.get(editingSourceId)?.required ? "Required for public rotation" : "Enabled for public rotation"}</label>
         <footer><span>Actor · {ticker?.actor || "Authenticated representative"}</span><div className="editorial-button-row"><button disabled={busy === "source"}>{busy === "source" ? "Saving…" : editingSourceId ? "Save source settings" : "Add RSS source"}</button>{editingSourceId && <button type="button" className="is-secondary" onClick={() => { setEditingSourceId(null); setSourceDraft({ ...emptySource }); }}>Cancel edit</button>}</div></footer>
       </form>
 

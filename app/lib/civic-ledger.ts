@@ -550,6 +550,7 @@ export type TickerSource = {
   itemLimit: number;
   refreshMinutes: number;
   builtIn: boolean;
+  required: boolean;
   createdBy: string;
   updatedBy: string;
   lastCheckedAt: string | null;
@@ -560,9 +561,46 @@ export type TickerSource = {
   archivedAt: string | null;
 };
 
+export type TickerWeatherLocation = {
+  locationId: string;
+  locationKey: string;
+  sourceId: string;
+  label: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  conditionsMode: "land" | "marine" | "combined";
+  enabled: boolean;
+  status: "active" | "paused" | "archived";
+  priority: number;
+  sortOrder: number;
+  treatment: TickerTreatment;
+  refreshMinutes: number;
+  createdBy: string;
+  updatedBy: string;
+  lastCheckedAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+};
+
+export type TickerWeatherSearchResult = {
+  id: string;
+  label: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  country: string;
+  admin1: string;
+};
+
 export type TickerFeedItem = {
   itemId: string;
   sourceId: string;
+  weatherLocationId: string | null;
   label: string;
   href: string | null;
   publishedAt: string | null;
@@ -592,6 +630,7 @@ export type TickerManager = {
   currentItems: ManagedTickerItem[];
   announcements: TickerAnnouncement[];
   sources: TickerSource[];
+  weatherLocations: TickerWeatherLocation[];
   feedItems: TickerFeedItem[];
   ledgerPolicy: string;
 };
@@ -1209,6 +1248,45 @@ export function setTickerFeedItemSuppressed(itemId: string, suppressed: boolean)
   return civicRequest<{ updated: boolean; item: TickerFeedItem }>(`/v4/editorial/ticker/feed-items/${encodeURIComponent(itemId)}`, {
     method: "PATCH",
     body: JSON.stringify({ suppressed }),
+  }, true);
+}
+
+export type TickerWeatherLocationInput = {
+  label: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  conditionsMode: "land" | "marine" | "combined";
+  enabled: boolean;
+  status: "active" | "paused" | "archived";
+  priority: number;
+  sortOrder: number;
+  treatment: TickerTreatment;
+  refreshMinutes: number;
+};
+
+export function searchTickerWeatherLocations(query: string) {
+  return civicRequest<{ results: TickerWeatherSearchResult[] }>(`/v4/editorial/ticker/weather-locations/geocode?q=${encodeURIComponent(query)}`, undefined, true);
+}
+
+export function createTickerWeatherLocation(input: TickerWeatherLocationInput) {
+  return civicRequest<{ created: true; location: TickerWeatherLocation }>("/v4/editorial/ticker/weather-locations", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, true);
+}
+
+export function updateTickerWeatherLocation(locationId: string, input: Partial<TickerWeatherLocationInput>) {
+  return civicRequest<{ updated: true; location: TickerWeatherLocation }>(`/v4/editorial/ticker/weather-locations/${encodeURIComponent(locationId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  }, true);
+}
+
+export function refreshTickerWeatherLocation(locationId: string) {
+  return civicRequest<{ refreshed: boolean; count?: number; reason?: string }>(`/v4/editorial/ticker/weather-locations/${encodeURIComponent(locationId)}/refresh`, {
+    method: "POST",
+    body: "{}",
   }, true);
 }
 
