@@ -1,0 +1,36 @@
+{
+  "releaseKey": "site-release:2026-08-23:editorial-studio-copy-simplification",
+  "entries": [
+    {
+      "eventKey": "site-release:13e6d9b:editorial-studio-copy-simplification",
+      "eventType": "interface_refinement",
+      "category": "platform",
+      "title": "Editorial Studio language and layout simplified",
+      "summary": "The private Editorial Studio was revised into a more direct administrative interface. Philosophical and promotional wording was removed, section labels were shortened, vertical spacing was reduced, and the WordPress explanation was consolidated into one compact read-only tool panel. Drafting, ticker management, Source Manager controls, analytics, ledger attribution, WordPress write restrictions, and server-side authorization are unchanged. All 73 release tests passed before publication.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "Private Editorial Studio",
+      "subjectRef": "release:v4-editorial-studio-copy-simplification",
+      "occurredAt": "2026-08-24T00:07:16.522Z",
+      "utopianDate": "Conceptday, Aura 17, Utopian Year 1",
+      "gregorianDate": "August 23, 2026",
+      "sourceLabel": "The Utopian Society private Editorial Studio",
+      "sourceUrl": "https://utopiansocietycorpus.org/editorial",
+      "metadata": {
+        "version": "4.1.1",
+        "implementationCommit": "13e6d9bb58de6a2620e2ee99e486e3e3d56494eb",
+        "sitesVersion": 36,
+        "sitesDeployment": "appgdep_6a8b8af2340881918dc3de7a02a42b82",
+        "releaseTests": 73,
+        "functionalChanges": false,
+        "changes": [
+          "Replaced the oversized editorial introduction with a compact title and status bar",
+          "Removed philosophical and promotional section wording",
+          "Shortened administrative headings and instructions",
+          "Consolidated the WordPress workflow explanation into a compact read-only tool panel",
+          "Reduced vertical spacing while preserving all controls",
+          "Preserved ledger attribution, read-only WordPress behavior, and server-side authorization"
+        ]
+      }
+    }
+  ]
+}
