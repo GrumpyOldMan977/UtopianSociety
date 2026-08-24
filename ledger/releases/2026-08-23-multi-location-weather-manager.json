@@ -1,0 +1,46 @@
+{
+  "releaseKey": "site-release:2026-08-23:multi-location-weather-manager",
+  "entries": [
+    {
+      "eventKey": "site-release:64099cb:multi-location-weather-manager",
+      "eventType": "platform_release",
+      "category": "platform",
+      "title": "Required weather source expanded for decentralized Society locations",
+      "summary": "Editorial Studio now includes a dedicated Weather Locations manager for the public Civic Wire. South Pacific Gyre remains the initial location, while authorized representatives can search for and add places such as Chicago or Tokyo, enter coordinates directly, select land, marine, or combined conditions, and control ordering, presentation, and refresh frequency. Utopian Reference Time and the weather collection are protected required sources, and the database prevents removal of the final active weather location. Human location changes and archival actions are attributed to the authenticated civic identity in the Transparency Ledger; automatic condition refreshes remain quiet. All 74 release tests passed before publication.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "Civic Wire Weather Locations",
+      "subjectRef": "release:v4-multi-location-weather-manager",
+      "occurredAt": "2026-08-24T04:59:09.230Z",
+      "utopianDate": "Conceptday, Aura 17, Utopian Year 1",
+      "gregorianDate": "August 23, 2026",
+      "sourceLabel": "The Utopian Society private Editorial Studio",
+      "sourceUrl": "https://utopiansocietycorpus.org/editorial",
+      "metadata": {
+        "version": "4.2.0",
+        "implementationCommit": "64099cb911e346cf56aa459abe3188311424a927",
+        "workerVersion": "e87eb11e-ee82-46fa-b82b-521ec7bb3043",
+        "sitesVersion": 37,
+        "sitesDeployment": "appgdep_6a8bcf51faa081919af2253ee0510d28",
+        "migration": "0021_v4_weather_location_manager.sql",
+        "releaseTests": 74,
+        "requiredSources": [
+          "Utopian Reference Time",
+          "Weather locations"
+        ],
+        "initialWeatherLocation": "South Pacific Gyre",
+        "locationSearchProvider": "Open-Meteo geocoding",
+        "databaseBackupSha256": "BE830C05604D2A37329AD68F36698CD0EA650763B03008294FA79575EC888901",
+        "changes": [
+          "Added an actor-attributed Weather Locations table and editor",
+          "Added protected location search plus manual coordinate entry",
+          "Added land, marine, and combined condition modes",
+          "Added per-location rank, within-rank order, treatment, and refresh health",
+          "Seeded South Pacific Gyre as the initial managed location",
+          "Locked Utopian Reference Time and the weather collection as required sources",
+          "Prevented archival or pausing of the final active weather location",
+          "Kept scheduled weather refreshes out of the ledger while recording human configuration changes"
+        ]
+      }
+    }
+  ]
+}
