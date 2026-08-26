@@ -1,0 +1,43 @@
+{
+  "releaseKey": "site-release:2026-08-26:civic-access-editorial-studio-repair",
+  "entries": [
+    {
+      "eventKey": "site-release:7c87f42:civic-access-editorial-studio-repair",
+      "eventType": "platform_release",
+      "category": "platform",
+      "title": "Civic access and Editorial Studio reliability repaired",
+      "summary": "The public login and citizen-profile presentation were refined while the private Editorial Studio's ticker controls were repaired. Login now shows password-length readiness directly, keeps its action red until the ten-character requirement is met, and turns green only to indicate local readiness rather than credential validity. Civic breadcrumbs are compact, and the certificate uses the Society's established interlocking-ring mark. Editorial updates now cross the Worker's CORS boundary correctly, report success or failure beside the active control, retain attempted form content after a failed save, and state the five-minute public-refresh window. No ticker content, civic account, or authorization rule was changed by this release. All 77 release tests passed before publication.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "Civic Access and Private Editorial Studio",
+      "subjectRef": "release:v4-civic-access-editorial-studio-repair",
+      "occurredAt": "2026-08-26T22:19:09.799Z",
+      "utopianDate": "Percepday, Aura 20, Utopian Year 1",
+      "gregorianDate": "August 26, 2026",
+      "sourceLabel": "The Utopian Society civic platform",
+      "sourceUrl": "https://utopiansocietycorpus.org/editorial",
+      "metadata": {
+        "version": "4.2.2",
+        "implementationCommit": "7c87f4246e73bc96ccc180dddceed92718b7fea7",
+        "workerVersion": "464342f5-ee44-4cfe-83f2-2231edaa58ce",
+        "sitesVersion": 39,
+        "sitesDeployment": "appgdep_6a8f65ded16c819183650aeda709aac5",
+        "releaseTests": 77,
+        "lintErrors": 0,
+        "databaseMigration": false,
+        "verifiedCorsMethod": "PATCH",
+        "changes": [
+          "Reduced the login and public-profile breadcrumb band height",
+          "Added explicit ten-character password readiness feedback",
+          "Changed the login action from red to green only when the local password-length requirement is met",
+          "Clarified that local readiness does not verify whether a password is correct",
+          "Replaced the loose certificate-circle construction with the established interlocking Society mark",
+          "Added PATCH to the Worker's CORS allow-methods response",
+          "Moved Editorial Studio success and error messages beside the active control",
+          "Preserved unsaved ticker, source, and weather form content when an update fails",
+          "Explained the five-minute public ticker refresh window after successful changes",
+          "Preserved server-side Founder authorization and made no civic-record or ticker-content mutation"
+        ]
+      }
+    }
+  ]
+}
