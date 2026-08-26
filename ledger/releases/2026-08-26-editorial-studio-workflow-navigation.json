@@ -1,0 +1,41 @@
+{
+  "releaseKey": "site-release:2026-08-26:editorial-studio-workflow-navigation",
+  "entries": [
+    {
+      "eventKey": "site-release:6897fcb:editorial-studio-workflow-navigation",
+      "eventType": "platform_release",
+      "category": "platform",
+      "title": "Editorial Studio reorganized into focused workflow tabs",
+      "summary": "The private Editorial Studio was reorganized from one long scrolling page into a focused two-tier workspace consistent with the Civic Portal. Publishing, Civic Wire, Insights, and Archive now form the primary workflows, with contextual tools for drafts, publications, ticker rotation, notices, weather, sources, traffic, and WordPress archive operations. Only the selected workspace is displayed, unfinished form content remains available while switching tools, direct links preserve the selected view, and keyboard and mobile navigation are supported. Existing authorization, editorial records, ticker content, and public data were not changed by this interface release. All 78 release tests passed before publication.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "Private Editorial Studio",
+      "subjectRef": "release:v4-editorial-studio-workflow-navigation",
+      "occurredAt": "2026-08-26T22:52:01.027Z",
+      "utopianDate": "Percepday, Aura 20, Utopian Year 1",
+      "gregorianDate": "August 26, 2026",
+      "sourceLabel": "The Utopian Society private Editorial Studio",
+      "sourceUrl": "https://utopiansocietycorpus.org/editorial",
+      "metadata": {
+        "version": "4.3.0",
+        "implementationCommit": "6897fcba6c6b5035288cca2d9e24135e244874ba",
+        "workerVersion": "464342f5-ee44-4cfe-83f2-2231edaa58ce",
+        "sitesVersion": 40,
+        "sitesDeployment": "appgdep_6a8f6de1f78881918124331b7e890492",
+        "releaseTests": 78,
+        "lintErrors": 0,
+        "databaseMigration": false,
+        "changes": [
+          "Added workflow-level tabs for Publishing, Civic Wire, Insights, and Archive",
+          "Added contextual secondary tabs for each workflow",
+          "Displayed only the selected tool panel to reduce page length and distraction",
+          "Preserved unfinished draft, notice, weather, and source form state between tab changes",
+          "Added section and view query parameters for refreshable and bookmarkable tool links",
+          "Added arrow-key, Home, and End navigation with explicit tab semantics",
+          "Made both navigation tiers horizontally scrollable on narrow screens",
+          "Routed existing ticker edit and configuration actions directly to their correct tool panels",
+          "Preserved server-side editorial authorization and made no civic-record or ticker-content mutation"
+        ]
+      }
+    }
+  ]
+}
