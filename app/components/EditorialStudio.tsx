@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
 import {
   createLocalEditorialDraft,
   createLocalTickerAnnouncement,
@@ -35,9 +35,32 @@ type SourceDraft = { label: string; endpointUrl: string; creditUrl: string; pref
 type WeatherDraft = { label: string; latitude: number; longitude: number; timezone: string; conditionsMode: "land" | "marine" | "combined"; enabled: boolean; status: "active" | "paused" | "archived"; priority: number; sortOrder: number; treatment: TickerTreatment; refreshMinutes: number };
 type FeedbackScope = "draft" | "notice-editor" | "current-wire" | "notice-library" | "weather" | "source" | "archive";
 type EditorialFeedback = { scope: FeedbackScope; kind: "success" | "error"; message: string };
+type EditorialSection = "publishing" | "civic-wire" | "insights" | "archive";
+type EditorialView = "draft" | "recent" | "rotation" | "notices" | "weather" | "sources" | "traffic" | "tools";
 const emptyNotice: NoticeDraft = { label: "", href: "", status: "draft", startsAt: "", endsAt: "", priority: 10, sortOrder: 0, treatment: "standard" };
 const emptySource: SourceDraft = { label: "", endpointUrl: "", creditUrl: "", prefix: "", enabled: true, status: "active", priority: 10, sortOrder: 0, treatment: "standard", itemLimit: 3, refreshMinutes: 5 };
 const emptyWeather: WeatherDraft = { label: "", latitude: 0, longitude: 0, timezone: "UTC", conditionsMode: "land", enabled: true, status: "active", priority: 10, sortOrder: 0, treatment: "standard", refreshMinutes: 5 };
+
+const editorialSections: Array<{ id: EditorialSection; label: string }> = [
+  { id: "publishing", label: "Publishing" },
+  { id: "civic-wire", label: "Civic Wire" },
+  { id: "insights", label: "Insights" },
+  { id: "archive", label: "Archive" },
+];
+
+const editorialViews: Record<EditorialSection, Array<{ id: EditorialView; label: string }>> = {
+  publishing: [{ id: "draft", label: "New Draft" }, { id: "recent", label: "Recent Publications" }],
+  "civic-wire": [{ id: "rotation", label: "Rotation" }, { id: "notices", label: "Notices" }, { id: "weather", label: "Weather" }, { id: "sources", label: "Sources" }],
+  insights: [{ id: "traffic", label: "Traffic" }],
+  archive: [{ id: "tools", label: "WordPress Tools" }],
+};
+
+const defaultEditorialViews: Record<EditorialSection, EditorialView> = {
+  publishing: "draft",
+  "civic-wire": "rotation",
+  insights: "traffic",
+  archive: "tools",
+};
 
 const rankOptions = [
   { value: 100, label: "Urgent" },
@@ -115,6 +138,8 @@ export function EditorialStudio() {
   const [weatherSearch, setWeatherSearch] = useState("");
   const [weatherSearchResults, setWeatherSearchResults] = useState<TickerWeatherSearchResult[]>([]);
   const [draft, setDraft] = useState({ title: "", slug: "", excerpt: "", contentMarkdown: "", featuredImage: "" });
+  const [activeSection, setActiveSection] = useState<EditorialSection>("publishing");
+  const [activeViewBySection, setActiveViewBySection] = useState<Record<EditorialSection, EditorialView>>({ ...defaultEditorialViews });
 
   const refresh = useCallback(async () => {
     try {
@@ -130,12 +155,73 @@ export function EditorialStudio() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  useEffect(() => {
+    function applyLocation() {
+      const params = new URLSearchParams(window.location.search);
+      const requestedSection = params.get("section");
+      const section = editorialSections.some((item) => item.id === requestedSection)
+        ? requestedSection as EditorialSection
+        : "publishing";
+      const requestedView = params.get("view");
+      const view = editorialViews[section].some((item) => item.id === requestedView)
+        ? requestedView as EditorialView
+        : defaultEditorialViews[section];
+      setActiveSection(section);
+      setActiveViewBySection((current) => ({ ...current, [section]: view }));
+    }
+
+    applyLocation();
+    window.addEventListener("popstate", applyLocation);
+    return () => window.removeEventListener("popstate", applyLocation);
+  }, []);
+
   const importedCount = useMemo(() => status?.publicationCounts.reduce((sum, row) => sum + Number(row.count), 0) ?? 0, [status]);
   const draftCount = status?.publicationCounts.find((row) => row.status === "draft")?.count ?? 0;
   const activeTickerCount = ticker?.currentItems.length ?? 0;
   const sourceById = useMemo(() => new Map((ticker?.sources ?? []).map((source) => [source.sourceId, source])), [ticker]);
   const activeWeatherCount = useMemo(() => (ticker?.weatherLocations ?? []).filter((location) => location.enabled && location.status === "active").length, [ticker]);
   const suppressedFeedItems = useMemo(() => (ticker?.feedItems ?? []).filter((item) => item.suppressed), [ticker]);
+  const activeView = activeViewBySection[activeSection];
+
+  function updateEditorialLocation(section: EditorialSection, view: EditorialView) {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("section") === section && url.searchParams.get("view") === view) return;
+    url.searchParams.set("section", section);
+    url.searchParams.set("view", view);
+    window.history.pushState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  function chooseEditorialSection(section: EditorialSection) {
+    const view = activeViewBySection[section];
+    setActiveSection(section);
+    updateEditorialLocation(section, view);
+  }
+
+  function chooseEditorialView(view: EditorialView) {
+    setActiveViewBySection((current) => ({ ...current, [activeSection]: view }));
+    updateEditorialLocation(activeSection, view);
+  }
+
+  function openEditorialView(section: EditorialSection, view: EditorialView, targetId?: string) {
+    setActiveSection(section);
+    setActiveViewBySection((current) => ({ ...current, [section]: view }));
+    updateEditorialLocation(section, view);
+    if (targetId) window.setTimeout(() => document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
+  function handleEditorialTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    const tabs = Array.from(event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []);
+    const currentIndex = tabs.indexOf(event.currentTarget);
+    if (currentIndex < 0 || tabs.length === 0) return;
+    event.preventDefault();
+    const nextIndex = event.key === "Home" ? 0
+      : event.key === "End" ? tabs.length - 1
+      : event.key === "ArrowRight" ? (currentIndex + 1) % tabs.length
+      : (currentIndex - 1 + tabs.length) % tabs.length;
+    tabs[nextIndex].focus();
+    tabs[nextIndex].click();
+  }
 
   async function runTickerMutation(key: string, scope: Exclude<FeedbackScope, "draft" | "archive">, action: () => Promise<unknown>, success: string) {
     setBusy(key);
@@ -189,7 +275,7 @@ export function EditorialStudio() {
       sortOrder: item.sortOrder,
       treatment: item.treatment,
     });
-    document.getElementById("ticker-notice-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    openEditorialView("civic-wire", "notices", "ticker-notice-editor");
   }
 
   async function saveSource(event: FormEvent<HTMLFormElement>) {
@@ -221,7 +307,7 @@ export function EditorialStudio() {
       itemLimit: source.itemLimit,
       refreshMinutes: source.refreshMinutes,
     });
-    document.getElementById("ticker-source-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    openEditorialView("civic-wire", "sources", "ticker-source-editor");
   }
 
 
@@ -282,7 +368,7 @@ export function EditorialStudio() {
     });
     setWeatherSearch("");
     setWeatherSearchResults([]);
-    document.getElementById("ticker-weather-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    openEditorialView("civic-wire", "weather", "ticker-weather-editor");
   }
 
   async function saveDraft(event: FormEvent<HTMLFormElement>) {
@@ -345,7 +431,40 @@ export function EditorialStudio() {
       <article><span>30-day public reading</span><strong>{analytics?.totalViews.toLocaleString("en-US") ?? "—"}</strong><small>aggregate first-party page views</small></article>
     </section>
 
-    <section className="editorial-workbench">
+    <div className="editorial-navigation">
+      <nav className="editorial-primary-tabs" role="tablist" aria-label="Editorial Studio sections" aria-orientation="horizontal">
+        {editorialSections.map((section) => <button
+          key={section.id}
+          id={`editorial-section-tab-${section.id}`}
+          type="button"
+          role="tab"
+          aria-selected={activeSection === section.id}
+          aria-controls={`editorial-section-panel-${section.id}`}
+          tabIndex={activeSection === section.id ? 0 : -1}
+          className={activeSection === section.id ? "is-active" : ""}
+          onClick={() => chooseEditorialSection(section.id)}
+          onKeyDown={handleEditorialTabKeyDown}
+        >{section.label}</button>)}
+      </nav>
+      <nav className="editorial-secondary-tabs" role="tablist" aria-label={`${editorialSections.find((section) => section.id === activeSection)?.label} tools`} aria-orientation="horizontal">
+          {editorialViews[activeSection].map((view) => <button
+            key={view.id}
+            id={`editorial-view-tab-${view.id}`}
+            type="button"
+            role="tab"
+            aria-selected={activeView === view.id}
+            aria-controls={`editorial-view-panel-${view.id}`}
+            tabIndex={activeView === view.id ? 0 : -1}
+            className={activeView === view.id ? "is-active" : ""}
+            onClick={() => chooseEditorialView(view.id)}
+            onKeyDown={handleEditorialTabKeyDown}
+          >{view.label}</button>)}
+      </nav>
+    </div>
+
+    <div id={`editorial-section-panel-${activeSection}`} role="tabpanel" aria-labelledby={`editorial-section-tab-${activeSection}`}>
+      <div id={`editorial-view-panel-${activeView}`} className="editorial-view-panel" role="tabpanel" aria-labelledby={`editorial-view-tab-${activeView}`} tabIndex={0}>
+    {activeSection === "publishing" && activeView === "draft" && <section className="editorial-workbench is-single-panel">
       <form onSubmit={saveDraft} className="editorial-sheet">
         <header><span>Blog drafts</span><h2>Create a draft</h2></header>
         <InlineFeedback feedback={feedback} scope="draft" />
@@ -356,7 +475,9 @@ export function EditorialStudio() {
         <label>Featured image URL · optional<input type="url" value={draft.featuredImage} onChange={(event) => setDraft((current) => ({ ...current, featuredImage: event.target.value }))} /></label>
         <footer><span>Author · {civicAuthor}</span><button disabled={busy === "draft"}>{busy === "draft" ? "Saving…" : "Save private draft"}</button></footer>
       </form>
+    </section>}
 
+    {activeSection === "civic-wire" && activeView === "notices" && <section className="editorial-workbench is-single-panel">
       <form onSubmit={saveAnnouncement} className="editorial-sheet ticker-sheet" id="ticker-notice-editor">
         <header><span>Ticker notices</span><h2>{editingAnnouncementId ? "Edit notice" : "New notice"}</h2><p>Changes are logged with the signed-in civic identity.</p></header>
         <InlineFeedback feedback={feedback} scope="notice-editor" />
@@ -376,25 +497,25 @@ export function EditorialStudio() {
         </div>
         <footer><span>Actor · {ticker?.actor || "Authenticated representative"}</span><div className="editorial-button-row"><button disabled={busy === "announcement"}>{busy === "announcement" ? "Saving…" : editingAnnouncementId ? "Save revision" : "Save ticker notice"}</button>{editingAnnouncementId && <button type="button" className="is-secondary" onClick={() => { setEditingAnnouncementId(null); setAnnouncement({ ...emptyNotice }); }}>Cancel edit</button>}</div></footer>
       </form>
-    </section>
+    </section>}
 
-    <section className="editorial-ticker-control" aria-labelledby="current-wire-title">
+    {activeSection === "civic-wire" && activeView === "rotation" && <section className="editorial-ticker-control" aria-labelledby="current-wire-title">
       <header><span>Live ticker</span><h2 id="current-wire-title">Current rotation</h2><p>Shown in public display order.</p></header>
       <InlineFeedback feedback={feedback} scope="current-wire" />
       <div className="editorial-table-wrap"><table className="editorial-table"><thead><tr><th>Hierarchy</th><th>Message</th><th>Type / source</th><th>Treatment</th><th>Destination</th><th>Action</th></tr></thead><tbody>
         {ticker?.currentItems.length ? ticker.currentItems.map((item) => <tr key={item.itemId}><td><strong>{rankLabel(item.priority)}</strong><small>order {item.sortOrder}</small></td><td>{item.label}</td><td><strong>{item.recordType}</strong><small>{item.sourceLabel}</small></td><td><span className={`ticker-treatment-chip is-${item.treatment}`}>{treatmentLabel(item.treatment)}</span></td><td>{item.href ? <a href={item.href}>Open link</a> : "—"}</td><td className="editorial-table-actions">{item.recordType === "manual" ? <button type="button" onClick={() => { const record = ticker.announcements.find((entry) => entry.announcementId === item.itemId); if (record) editAnnouncement(record); }}>Edit</button> : item.recordType === "feed" ? <button type="button" disabled={busy === `feed:${item.itemId}`} onClick={() => void runTickerMutation(`feed:${item.itemId}`, "current-wire", () => setTickerFeedItemSuppressed(item.itemId, true), "Feed item suppressed and recorded in the Transparency Ledger.")}>Suppress</button> : item.sourceId && <button type="button" onClick={() => { const source = sourceById.get(item.sourceId!); if (source) editSource(source); }}>Configure</button>}</td></tr>) : <tr><td colSpan={6}>The managed rotation is awaiting its first source refresh.</td></tr>}
       </tbody></table></div>
-    </section>
+    </section>}
 
-    <section className="editorial-ticker-control" aria-labelledby="notice-library-title">
+    {activeSection === "civic-wire" && activeView === "notices" && <section className="editorial-ticker-control" aria-labelledby="notice-library-title">
       <header><span>Notice library</span><h2 id="notice-library-title">Manual notices</h2><p>Archived notices can be restored.</p></header>
       <InlineFeedback feedback={feedback} scope="notice-library" />
       <div className="editorial-table-wrap"><table className="editorial-table"><thead><tr><th>Status</th><th>Notice</th><th>Hierarchy</th><th>Presentation</th><th>Last actor</th><th>Actions</th></tr></thead><tbody>
         {ticker?.announcements.length ? ticker.announcements.map((item) => <tr key={item.announcementId}><td><span className={`editorial-status is-${item.status}`}>{item.status}</span></td><td>{item.label}<small>{item.startsAt ? `Begins ${new Date(item.startsAt).toLocaleString()}` : "No beginning limit"}{item.endsAt ? ` · ends ${new Date(item.endsAt).toLocaleString()}` : ""}</small></td><td><strong>{rankLabel(item.priority)}</strong><small>order {item.sortOrder}</small></td><td>{treatmentLabel(item.treatment)}</td><td>{item.updatedBy}<small>{new Date(item.updatedAt).toLocaleString()}</small></td><td className="editorial-table-actions"><button type="button" onClick={() => editAnnouncement(item)}>Edit</button>{item.status !== "archived" ? <><button type="button" disabled={busy === `notice-state:${item.announcementId}`} onClick={() => void runTickerMutation(`notice-state:${item.announcementId}`, "notice-library", () => updateTickerAnnouncement(item.announcementId, { status: item.status === "paused" ? "active" : "paused" }), `Notice ${item.status === "paused" ? "activated" : "paused"} and recorded in the Transparency Ledger.`)}>{item.status === "paused" ? "Activate" : "Pause"}</button><button type="button" className="is-danger" disabled={busy === `notice-archive:${item.announcementId}`} onClick={() => void runTickerMutation(`notice-archive:${item.announcementId}`, "notice-library", () => updateTickerAnnouncement(item.announcementId, { status: "archived" }), "Notice archived and recorded in the Transparency Ledger.")}>Archive</button></> : <button type="button" onClick={() => void runTickerMutation(`notice-restore:${item.announcementId}`, "notice-library", () => updateTickerAnnouncement(item.announcementId, { status: "paused" }), "Notice restored in a paused state and recorded in the Transparency Ledger.")}>Restore paused</button>}</td></tr>) : <tr><td colSpan={6}>No ticker notices have been prepared.</td></tr>}
       </tbody></table></div>
-    </section>
+    </section>}
 
-    <section className="editorial-source-manager" aria-labelledby="weather-manager-title">
+    {activeSection === "civic-wire" && activeView === "weather" && <section className="editorial-source-manager" aria-labelledby="weather-manager-title">
       <header><span>Required source</span><h2 id="weather-manager-title">Weather Locations</h2><p>Add each Society site or place represented on the civic wire. At least one location remains active.</p></header>
       <InlineFeedback feedback={feedback} scope="weather" />
       <div className="editorial-table-wrap"><table className="editorial-table"><thead><tr><th>Location</th><th>Conditions</th><th>State</th><th>Hierarchy</th><th>Health</th><th>Actions</th></tr></thead><tbody>
@@ -416,9 +537,9 @@ export function EditorialStudio() {
         <div className="editorial-field-row"><label>Status<select value={weatherDraft.status} onChange={(event) => setWeatherDraft((current) => ({ ...current, status: event.target.value as WeatherDraft["status"] }))}><option value="active">Active</option><option value="paused">Paused</option><option value="archived">Archived</option></select></label><label className="editorial-checkbox"><input type="checkbox" checked={weatherDraft.enabled} onChange={(event) => setWeatherDraft((current) => ({ ...current, enabled: event.target.checked }))} />Enabled for public rotation</label></div>
         <footer><span>Actor · {ticker?.actor || "Authenticated representative"}</span><div className="editorial-button-row"><button disabled={busy === "weather"}>{busy === "weather" ? "Saving…" : editingWeatherId ? "Save location settings" : "Add weather location"}</button>{editingWeatherId && <button type="button" className="is-secondary" onClick={() => { setEditingWeatherId(null); setWeatherDraft({ ...emptyWeather }); setWeatherSearch(""); setWeatherSearchResults([]); }}>Cancel edit</button>}</div></footer>
       </form>
-    </section>
+    </section>}
 
-    <section className="editorial-source-manager" aria-labelledby="source-manager-title">
+    {activeSection === "civic-wire" && activeView === "sources" && <section className="editorial-source-manager" aria-labelledby="source-manager-title">
       <header><span>Sources</span><h2 id="source-manager-title">Source Manager</h2><p>Manage built-in sources and RSS or Atom feeds.</p></header>
       <InlineFeedback feedback={feedback} scope="source" />
       <div className="editorial-table-wrap"><table className="editorial-table"><thead><tr><th>Source</th><th>State</th><th>Hierarchy</th><th>Defaults</th><th>Health</th><th>Actions</th></tr></thead><tbody>
@@ -438,14 +559,16 @@ export function EditorialStudio() {
       </form>
 
       {suppressedFeedItems.length > 0 && <div className="editorial-suppressed"><h3>Suppressed feed items</h3><p>These remain available for restoration while their source still retains them.</p>{suppressedFeedItems.map((item) => <article key={item.itemId}><span>{sourceById.get(item.sourceId)?.label || "Feed"}</span><strong>{item.label}</strong><button type="button" onClick={() => void runTickerMutation(`feed-restore:${item.itemId}`, "source", () => setTickerFeedItemSuppressed(item.itemId, false), "Feed item restored and recorded in the Transparency Ledger.")}>Restore</button></article>)}</div>}
-    </section>
+    </section>}
 
-    <section className="editorial-bridge" aria-labelledby="editorial-bridge-title">
+    {activeSection === "archive" && activeView === "tools" && <section className="editorial-bridge" aria-labelledby="editorial-bridge-title">
       <div><span>WordPress</span><h2 id="editorial-bridge-title">Archive tools</h2></div>
       <aside><strong>Read-only connection</strong><p>Sync published posts or download the draft handoff file.</p><InlineFeedback feedback={feedback} scope="archive" /><button type="button" onClick={synchronizeArchive} disabled={busy === "sync"}>{busy === "sync" ? "Synchronizing…" : "Synchronize published posts"}</button><button type="button" onClick={downloadHandoff} disabled={busy === "handoff"}>{busy === "handoff" ? "Preparing…" : "Download handoff file"}</button></aside>
-    </section>
+    </section>}
 
-    <section className="editorial-publications" aria-label="Aggregate public analytics"><header><span>Last 30 days</span><h2>Traffic sources</h2><p>{analytics?.privacy || "Public page views only."}</p></header><div>{analytics?.sources.length ? analytics.sources.slice(0, 8).map((source) => <article key={`${source.source_group}:${source.source_detail}`}><span>{source.source_group}</span><strong>{source.source_detail || "No external referrer"}</strong><small>{Number(source.views).toLocaleString("en-US")} page views</small></article>) : <article><span>No traffic yet</span><strong>No source totals</strong><small>Data will appear after public visits.</small></article>}</div></section>
-    <section className="editorial-publications" aria-label="Recent publication inventory"><header><span>Publications</span><h2>Recent records</h2></header><div>{status?.recentPublications.map((item) => <article key={item.publicationId}><span>{item.status} · {item.type}</span><strong>{item.title}</strong><small>{item.utopianDate || "Date pending"}</small></article>)}</div></section>
+    {activeSection === "insights" && activeView === "traffic" && <section className="editorial-publications" aria-label="Aggregate public analytics"><header><span>Last 30 days</span><h2>Traffic sources</h2><p>{analytics?.privacy || "Public page views only."}</p></header><div>{analytics?.sources.length ? analytics.sources.slice(0, 8).map((source) => <article key={`${source.source_group}:${source.source_detail}`}><span>{source.source_group}</span><strong>{source.source_detail || "No external referrer"}</strong><small>{Number(source.views).toLocaleString("en-US")} page views</small></article>) : <article><span>No traffic yet</span><strong>No source totals</strong><small>Data will appear after public visits.</small></article>}</div></section>}
+    {activeSection === "publishing" && activeView === "recent" && <section className="editorial-publications" aria-label="Recent publication inventory"><header><span>Publications</span><h2>Recent records</h2></header><div>{status?.recentPublications.map((item) => <article key={item.publicationId}><span>{item.status} · {item.type}</span><strong>{item.title}</strong><small>{item.utopianDate || "Date pending"}</small></article>)}</div></section>}
+      </div>
+    </div>
   </>;
 }

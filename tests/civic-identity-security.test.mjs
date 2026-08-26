@@ -205,6 +205,32 @@ test("editorial PATCH actions cross CORS and keep feedback beside the active con
   assert.match(styles, /\.editorial-inline-message\.is-error/);
 });
 
+test("Editorial Studio uses focused, deep-linked, keyboard-accessible workflow tabs", async () => {
+  const studio = await source("app/components/EditorialStudio.tsx");
+  const styles = await source("app/editorial-studio.css");
+
+  assert.match(studio, /Publishing/);
+  assert.match(studio, /Civic Wire/);
+  assert.match(studio, /Recent Publications/);
+  assert.match(studio, /Rotation/);
+  assert.match(studio, /Notices/);
+  assert.match(studio, /Weather/);
+  assert.match(studio, /Sources/);
+  assert.match(studio, /WordPress Tools/);
+  assert.match(studio, /role="tablist"/);
+  assert.match(studio, /aria-selected=/);
+  assert.match(studio, /ArrowLeft/);
+  assert.match(studio, /ArrowRight/);
+  assert.match(studio, /url\.searchParams\.set\("section", section\)/);
+  assert.match(studio, /url\.searchParams\.set\("view", view\)/);
+  assert.match(studio, /openEditorialView\("civic-wire", "notices", "ticker-notice-editor"\)/);
+  assert.match(studio, /openEditorialView\("civic-wire", "weather", "ticker-weather-editor"\)/);
+  assert.match(studio, /openEditorialView\("civic-wire", "sources", "ticker-source-editor"\)/);
+  assert.match(styles, /\.editorial-navigation\{position:sticky/);
+  assert.match(styles, /\.editorial-primary-tabs button\.is-active/);
+  assert.match(styles, /\.editorial-secondary-tabs button\.is-active/);
+});
+
 test("login readiness, compact breadcrumbs, and the certificate use explicit visual cues", async () => {
   const login = await source("app/components/CivicLogin.tsx");
   const portal = await source("app/components/CitizenPortal.tsx");
