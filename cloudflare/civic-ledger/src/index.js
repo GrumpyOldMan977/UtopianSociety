@@ -98,7 +98,7 @@ function corsHeaders(request) {
   return {
     "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS, POST, PUT, DELETE",
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS, POST, PUT, PATCH, DELETE",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   };

@@ -2602,7 +2602,7 @@ function CertificateTab({ snapshot }: { snapshot: CivicPortalSnapshot }) {
       <p>Let the living record acknowledge that</p>
       <h3>{certificate.civicName}</h3>
       <p>has demonstrated civic comprehension, entered the voluntary oath freely, and is welcomed as a symbolic citizen.</p>
-      <div className="certificate-ring-seal" aria-label="Five interlocking rings"><i /><i /><i /><i /><i /></div>
+      <div className="certificate-ring-seal"><span role="img" aria-label="Five interlocking rings of the Utopian Society" /></div>
       <dl>
         <div><dt>Utopian date</dt><dd>{certificate.utopianDate}</dd></div>
         <div><dt>Gregorian reference</dt><dd>{certificate.gregorianDate}</dd></div>

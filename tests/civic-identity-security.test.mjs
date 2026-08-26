@@ -188,6 +188,41 @@ test("the managed civic wire attributes every human change and safely supports c
   assert.doesNotMatch(section(worker, "async function createTickerAnnouncement", "async function updateTickerAnnouncement"), /input\.createdBy/);
 });
 
+test("editorial PATCH actions cross CORS and keep feedback beside the active control", async () => {
+  const worker = await source("cloudflare/civic-ledger/src/index.js");
+  const studio = await source("app/components/EditorialStudio.tsx");
+  const styles = await source("app/editorial-studio.css");
+  const cors = section(worker, "function corsHeaders", "function json");
+
+  assert.match(cors, /Access-Control-Allow-Methods.*PATCH/);
+  assert.match(studio, /type FeedbackScope = "draft" \| "notice-editor" \| "current-wire" \| "notice-library" \| "weather" \| "source" \| "archive"/);
+  assert.match(studio, /function InlineFeedback/);
+  assert.match(studio, /Public rotation refreshes within five minutes/);
+  assert.match(studio, /const saved = await runTickerMutation\("announcement"/);
+  assert.match(studio, /const saved = await runTickerMutation\("source"/);
+  assert.match(studio, /const saved = await runTickerMutation\("weather"/);
+  assert.equal((studio.match(/if \(saved\)/g) || []).length, 3);
+  assert.match(styles, /\.editorial-inline-message\.is-error/);
+});
+
+test("login readiness, compact breadcrumbs, and the certificate use explicit visual cues", async () => {
+  const login = await source("app/components/CivicLogin.tsx");
+  const portal = await source("app/components/CitizenPortal.tsx");
+  const styles = await source("app/citizen-portal.css");
+
+  assert.match(login, /const PASSWORD_MIN_LENGTH = 10/);
+  assert.match(login, /This does not verify that the password is correct/);
+  assert.match(login, /aria-describedby="civic-password-requirement"/);
+  assert.match(login, /is-password-ready/);
+  assert.match(login, /is-password-short/);
+  assert.match(styles, /\.citizen-portal-breadcrumb\{[^}]*padding:32px/);
+  assert.match(styles, /button\.is-password-short/);
+  assert.match(styles, /button\.is-password-ready/);
+  assert.match(portal, /certificate-ring-seal"><span role="img" aria-label="Five interlocking rings of the Utopian Society"/);
+  assert.match(styles, /\.certificate-ring-seal span\{[^}]*corpus-mark\.jpg/);
+  assert.doesNotMatch(styles, /\.certificate-ring-seal i:nth-child/);
+});
+
 test("weather remains required while supporting attributed decentralized locations", async () => {
   const worker = await source("cloudflare/civic-ledger/src/index.js");
   const migration = await source("cloudflare/civic-ledger/migrations/0021_v4_weather_location_manager.sql");

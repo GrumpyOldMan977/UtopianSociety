@@ -33,6 +33,8 @@ const civicAuthor = "Adreto Nagdo Senoviros";
 type NoticeDraft = { label: string; href: string; status: "draft" | "scheduled" | "active" | "paused"; startsAt: string; endsAt: string; priority: number; sortOrder: number; treatment: TickerTreatment };
 type SourceDraft = { label: string; endpointUrl: string; creditUrl: string; prefix: string; enabled: boolean; status: "active" | "paused" | "archived"; priority: number; sortOrder: number; treatment: TickerTreatment; itemLimit: number; refreshMinutes: number };
 type WeatherDraft = { label: string; latitude: number; longitude: number; timezone: string; conditionsMode: "land" | "marine" | "combined"; enabled: boolean; status: "active" | "paused" | "archived"; priority: number; sortOrder: number; treatment: TickerTreatment; refreshMinutes: number };
+type FeedbackScope = "draft" | "notice-editor" | "current-wire" | "notice-library" | "weather" | "source" | "archive";
+type EditorialFeedback = { scope: FeedbackScope; kind: "success" | "error"; message: string };
 const emptyNotice: NoticeDraft = { label: "", href: "", status: "draft", startsAt: "", endsAt: "", priority: 10, sortOrder: 0, treatment: "standard" };
 const emptySource: SourceDraft = { label: "", endpointUrl: "", creditUrl: "", prefix: "", enabled: true, status: "active", priority: 10, sortOrder: 0, treatment: "standard", itemLimit: 3, refreshMinutes: 5 };
 const emptyWeather: WeatherDraft = { label: "", latitude: 0, longitude: 0, timezone: "UTC", conditionsMode: "land", enabled: true, status: "active", priority: 10, sortOrder: 0, treatment: "standard", refreshMinutes: 5 };
@@ -92,12 +94,17 @@ function weatherHealth(location: TickerWeatherLocation) {
   return "Awaiting first refresh";
 }
 
+function InlineFeedback({ feedback, scope }: { feedback: EditorialFeedback | null; scope: FeedbackScope }) {
+  if (!feedback || feedback.scope !== scope) return null;
+  return <p className={`editorial-inline-message ${feedback.kind === "error" ? "is-error" : "is-success"}`} role={feedback.kind === "error" ? "alert" : "status"} aria-live="polite">{feedback.message}</p>;
+}
+
 export function EditorialStudio() {
   const [status, setStatus] = useState<EditorialStatus | null>(null);
   const [ticker, setTicker] = useState<TickerManager | null>(null);
   const [analytics, setAnalytics] = useState<EditorialAnalytics | null>(null);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [feedback, setFeedback] = useState<EditorialFeedback | null>(null);
   const [busy, setBusy] = useState("");
   const [announcement, setAnnouncement] = useState<NoticeDraft>({ ...emptyNotice });
   const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null);
@@ -130,16 +137,18 @@ export function EditorialStudio() {
   const activeWeatherCount = useMemo(() => (ticker?.weatherLocations ?? []).filter((location) => location.enabled && location.status === "active").length, [ticker]);
   const suppressedFeedItems = useMemo(() => (ticker?.feedItems ?? []).filter((item) => item.suppressed), [ticker]);
 
-  async function runTickerMutation(key: string, action: () => Promise<unknown>, success: string) {
+  async function runTickerMutation(key: string, scope: Exclude<FeedbackScope, "draft" | "archive">, action: () => Promise<unknown>, success: string) {
     setBusy(key);
     setError("");
-    setNotice("");
+    setFeedback(null);
     try {
       await action();
-      setNotice(success);
       await refresh();
+      setFeedback({ scope, kind: "success", message: `${success} Public rotation refreshes within five minutes.` });
+      return true;
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The civic wire could not be updated.");
+      setFeedback({ scope, kind: "error", message: reason instanceof Error ? reason.message : "The civic wire could not be updated." });
+      return false;
     } finally {
       setBusy("");
     }
@@ -157,13 +166,15 @@ export function EditorialStudio() {
       sortOrder: announcement.sortOrder,
       treatment: announcement.treatment,
     };
-    await runTickerMutation("announcement", () => editingAnnouncementId
+    const saved = await runTickerMutation("announcement", "notice-editor", () => editingAnnouncementId
       ? updateTickerAnnouncement(editingAnnouncementId, input)
       : createLocalTickerAnnouncement(input), editingAnnouncementId
       ? "Ticker notice updated and recorded in the Transparency Ledger."
       : "Ticker notice saved and recorded in the Transparency Ledger.");
-    setAnnouncement({ ...emptyNotice });
-    setEditingAnnouncementId(null);
+    if (saved) {
+      setAnnouncement({ ...emptyNotice });
+      setEditingAnnouncementId(null);
+    }
   }
 
   function editAnnouncement(item: TickerAnnouncement) {
@@ -184,13 +195,15 @@ export function EditorialStudio() {
   async function saveSource(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const input = { ...sourceDraft, creditUrl: sourceDraft.creditUrl || null };
-    await runTickerMutation("source", () => editingSourceId
+    const saved = await runTickerMutation("source", "source", () => editingSourceId
       ? updateTickerSource(editingSourceId, input)
       : createTickerSource(input), editingSourceId
       ? "Ticker source updated and recorded in the Transparency Ledger."
       : "Custom RSS source added and recorded in the Transparency Ledger.");
-    setSourceDraft({ ...emptySource });
-    setEditingSourceId(null);
+    if (saved) {
+      setSourceDraft({ ...emptySource });
+      setEditingSourceId(null);
+    }
   }
 
   function editSource(source: TickerSource) {
@@ -215,12 +228,13 @@ export function EditorialStudio() {
   async function findWeatherLocation() {
     setBusy("weather-search");
     setError("");
+    setFeedback(null);
     try {
       const result = await searchTickerWeatherLocations(weatherSearch);
       setWeatherSearchResults(result.results);
-      if (!result.results.length) setNotice("No matching locations were found. Coordinates can still be entered manually.");
+      if (!result.results.length) setFeedback({ scope: "weather", kind: "error", message: "No matching locations were found. Coordinates can still be entered manually." });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The location search could not be completed.");
+      setFeedback({ scope: "weather", kind: "error", message: reason instanceof Error ? reason.message : "The location search could not be completed." });
     } finally { setBusy(""); }
   }
 
@@ -238,15 +252,17 @@ export function EditorialStudio() {
 
   async function saveWeatherLocation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await runTickerMutation("weather", () => editingWeatherId
+    const saved = await runTickerMutation("weather", "weather", () => editingWeatherId
       ? updateTickerWeatherLocation(editingWeatherId, weatherDraft)
       : createTickerWeatherLocation(weatherDraft), editingWeatherId
       ? "Weather location updated and recorded in the Transparency Ledger."
       : "Weather location added and recorded in the Transparency Ledger.");
-    setWeatherDraft({ ...emptyWeather });
-    setEditingWeatherId(null);
-    setWeatherSearch("");
-    setWeatherSearchResults([]);
+    if (saved) {
+      setWeatherDraft({ ...emptyWeather });
+      setEditingWeatherId(null);
+      setWeatherSearch("");
+      setWeatherSearchResults([]);
+    }
   }
 
   function editWeatherLocation(location: TickerWeatherLocation) {
@@ -273,19 +289,19 @@ export function EditorialStudio() {
     event.preventDefault();
     setBusy("draft");
     setError("");
-    setNotice("");
+    setFeedback(null);
     try {
       await createLocalEditorialDraft({ ...draft, slug: draft.slug || slugify(draft.title), type: "post", authorName: civicAuthor });
       setDraft({ title: "", slug: "", excerpt: "", contentMarkdown: "", featuredImage: "" });
-      setNotice("Blog draft saved to the private editorial record. Nothing was sent to WordPress.");
       await refresh();
+      setFeedback({ scope: "draft", kind: "success", message: "Blog draft saved to the private editorial record. Nothing was sent to WordPress." });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The local draft could not be saved.");
+      setFeedback({ scope: "draft", kind: "error", message: reason instanceof Error ? reason.message : "The local draft could not be saved." });
     } finally { setBusy(""); }
   }
 
   async function downloadHandoff() {
-    setBusy("handoff"); setError(""); setNotice("");
+    setBusy("handoff"); setError(""); setFeedback(null);
     try {
       const manifest = await getLocalWordpressHandoff();
       const blob = new Blob([`${JSON.stringify(manifest, null, 2)}\n`], { type: "application/json" });
@@ -293,18 +309,18 @@ export function EditorialStudio() {
       const link = document.createElement("a");
       link.href = href; link.download = `utopian-wordpress-handoff-${manifest.generatedAt.slice(0, 10)}.json`;
       document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(href);
-      setNotice(`Reviewed handoff manifest prepared for ${manifest.count} draft${manifest.count === 1 ? "" : "s"}. No WordPress write occurred.`);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "The local handoff manifest could not be prepared."); }
+      setFeedback({ scope: "archive", kind: "success", message: `Reviewed handoff manifest prepared for ${manifest.count} draft${manifest.count === 1 ? "" : "s"}. No WordPress write occurred.` });
+    } catch (reason) { setFeedback({ scope: "archive", kind: "error", message: reason instanceof Error ? reason.message : "The local handoff manifest could not be prepared." }); }
     finally { setBusy(""); }
   }
 
   async function synchronizeArchive() {
-    setBusy("sync"); setError(""); setNotice("");
+    setBusy("sync"); setError(""); setFeedback(null);
     try {
       const result = await synchronizeWordpressPublications();
-      setNotice(`${result.synchronized} published WordPress posts synchronized read-only. No WordPress content was changed.`);
       await refresh();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "The WordPress archive could not be synchronized."); }
+      setFeedback({ scope: "archive", kind: "success", message: `${result.synchronized} published WordPress posts synchronized read-only. No WordPress content was changed.` });
+    } catch (reason) { setFeedback({ scope: "archive", kind: "error", message: reason instanceof Error ? reason.message : "The WordPress archive could not be synchronized." }); }
     finally { setBusy(""); }
   }
 
@@ -320,7 +336,7 @@ export function EditorialStudio() {
       <aside aria-label="Editorial status"><strong>{status.wordpressBridge.mode}</strong><span>{status.productionFrozen ? "Publishing paused" : "Publishing active"}</span><small>WordPress connection is read-only</small></aside>
     </section>
 
-    {(error || notice) && <p className={error ? "editorial-message is-error" : "editorial-message"} role={error ? "alert" : "status"}>{error || notice}</p>}
+    {error && <p className="editorial-message is-error" role="alert">{error}</p>}
 
     <section className="editorial-vitals" aria-label="Editorial summary">
       <article><span>WordPress archive</span><strong>{importedCount}</strong><small>publications inventoried</small></article>
@@ -332,6 +348,7 @@ export function EditorialStudio() {
     <section className="editorial-workbench">
       <form onSubmit={saveDraft} className="editorial-sheet">
         <header><span>Blog drafts</span><h2>Create a draft</h2></header>
+        <InlineFeedback feedback={feedback} scope="draft" />
         <label>Title<input required maxLength={240} value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value, slug: current.slug || slugify(event.target.value) }))} /></label>
         <label>Slug<input required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength={180} value={draft.slug} onChange={(event) => setDraft((current) => ({ ...current, slug: slugify(event.target.value) }))} /></label>
         <label>Excerpt<textarea required maxLength={600} rows={3} value={draft.excerpt} onChange={(event) => setDraft((current) => ({ ...current, excerpt: event.target.value }))} /></label>
@@ -342,6 +359,7 @@ export function EditorialStudio() {
 
       <form onSubmit={saveAnnouncement} className="editorial-sheet ticker-sheet" id="ticker-notice-editor">
         <header><span>Ticker notices</span><h2>{editingAnnouncementId ? "Edit notice" : "New notice"}</h2><p>Changes are logged with the signed-in civic identity.</p></header>
+        <InlineFeedback feedback={feedback} scope="notice-editor" />
         <label>Notice<input required maxLength={240} value={announcement.label} onChange={(event) => setAnnouncement((current) => ({ ...current, label: event.target.value }))} /></label>
         <label>Destination · optional<input placeholder="/citizens or https://…" value={announcement.href} onChange={(event) => setAnnouncement((current) => ({ ...current, href: event.target.value }))} /></label>
         <div className="editorial-field-row">
@@ -362,24 +380,27 @@ export function EditorialStudio() {
 
     <section className="editorial-ticker-control" aria-labelledby="current-wire-title">
       <header><span>Live ticker</span><h2 id="current-wire-title">Current rotation</h2><p>Shown in public display order.</p></header>
+      <InlineFeedback feedback={feedback} scope="current-wire" />
       <div className="editorial-table-wrap"><table className="editorial-table"><thead><tr><th>Hierarchy</th><th>Message</th><th>Type / source</th><th>Treatment</th><th>Destination</th><th>Action</th></tr></thead><tbody>
-        {ticker?.currentItems.length ? ticker.currentItems.map((item) => <tr key={item.itemId}><td><strong>{rankLabel(item.priority)}</strong><small>order {item.sortOrder}</small></td><td>{item.label}</td><td><strong>{item.recordType}</strong><small>{item.sourceLabel}</small></td><td><span className={`ticker-treatment-chip is-${item.treatment}`}>{treatmentLabel(item.treatment)}</span></td><td>{item.href ? <a href={item.href}>Open link</a> : "—"}</td><td className="editorial-table-actions">{item.recordType === "manual" ? <button type="button" onClick={() => { const record = ticker.announcements.find((entry) => entry.announcementId === item.itemId); if (record) editAnnouncement(record); }}>Edit</button> : item.recordType === "feed" ? <button type="button" disabled={busy === `feed:${item.itemId}`} onClick={() => void runTickerMutation(`feed:${item.itemId}`, () => setTickerFeedItemSuppressed(item.itemId, true), "Feed item suppressed and recorded in the Transparency Ledger.")}>Suppress</button> : item.sourceId && <button type="button" onClick={() => { const source = sourceById.get(item.sourceId!); if (source) editSource(source); }}>Configure</button>}</td></tr>) : <tr><td colSpan={6}>The managed rotation is awaiting its first source refresh.</td></tr>}
+        {ticker?.currentItems.length ? ticker.currentItems.map((item) => <tr key={item.itemId}><td><strong>{rankLabel(item.priority)}</strong><small>order {item.sortOrder}</small></td><td>{item.label}</td><td><strong>{item.recordType}</strong><small>{item.sourceLabel}</small></td><td><span className={`ticker-treatment-chip is-${item.treatment}`}>{treatmentLabel(item.treatment)}</span></td><td>{item.href ? <a href={item.href}>Open link</a> : "—"}</td><td className="editorial-table-actions">{item.recordType === "manual" ? <button type="button" onClick={() => { const record = ticker.announcements.find((entry) => entry.announcementId === item.itemId); if (record) editAnnouncement(record); }}>Edit</button> : item.recordType === "feed" ? <button type="button" disabled={busy === `feed:${item.itemId}`} onClick={() => void runTickerMutation(`feed:${item.itemId}`, "current-wire", () => setTickerFeedItemSuppressed(item.itemId, true), "Feed item suppressed and recorded in the Transparency Ledger.")}>Suppress</button> : item.sourceId && <button type="button" onClick={() => { const source = sourceById.get(item.sourceId!); if (source) editSource(source); }}>Configure</button>}</td></tr>) : <tr><td colSpan={6}>The managed rotation is awaiting its first source refresh.</td></tr>}
       </tbody></table></div>
     </section>
 
     <section className="editorial-ticker-control" aria-labelledby="notice-library-title">
       <header><span>Notice library</span><h2 id="notice-library-title">Manual notices</h2><p>Archived notices can be restored.</p></header>
+      <InlineFeedback feedback={feedback} scope="notice-library" />
       <div className="editorial-table-wrap"><table className="editorial-table"><thead><tr><th>Status</th><th>Notice</th><th>Hierarchy</th><th>Presentation</th><th>Last actor</th><th>Actions</th></tr></thead><tbody>
-        {ticker?.announcements.length ? ticker.announcements.map((item) => <tr key={item.announcementId}><td><span className={`editorial-status is-${item.status}`}>{item.status}</span></td><td>{item.label}<small>{item.startsAt ? `Begins ${new Date(item.startsAt).toLocaleString()}` : "No beginning limit"}{item.endsAt ? ` · ends ${new Date(item.endsAt).toLocaleString()}` : ""}</small></td><td><strong>{rankLabel(item.priority)}</strong><small>order {item.sortOrder}</small></td><td>{treatmentLabel(item.treatment)}</td><td>{item.updatedBy}<small>{new Date(item.updatedAt).toLocaleString()}</small></td><td className="editorial-table-actions"><button type="button" onClick={() => editAnnouncement(item)}>Edit</button>{item.status !== "archived" ? <><button type="button" disabled={busy === `notice-state:${item.announcementId}`} onClick={() => void runTickerMutation(`notice-state:${item.announcementId}`, () => updateTickerAnnouncement(item.announcementId, { status: item.status === "paused" ? "active" : "paused" }), `Notice ${item.status === "paused" ? "activated" : "paused"} and recorded in the Transparency Ledger.`)}>{item.status === "paused" ? "Activate" : "Pause"}</button><button type="button" className="is-danger" disabled={busy === `notice-archive:${item.announcementId}`} onClick={() => void runTickerMutation(`notice-archive:${item.announcementId}`, () => updateTickerAnnouncement(item.announcementId, { status: "archived" }), "Notice archived and recorded in the Transparency Ledger.")}>Archive</button></> : <button type="button" onClick={() => void runTickerMutation(`notice-restore:${item.announcementId}`, () => updateTickerAnnouncement(item.announcementId, { status: "paused" }), "Notice restored in a paused state and recorded in the Transparency Ledger.")}>Restore paused</button>}</td></tr>) : <tr><td colSpan={6}>No ticker notices have been prepared.</td></tr>}
+        {ticker?.announcements.length ? ticker.announcements.map((item) => <tr key={item.announcementId}><td><span className={`editorial-status is-${item.status}`}>{item.status}</span></td><td>{item.label}<small>{item.startsAt ? `Begins ${new Date(item.startsAt).toLocaleString()}` : "No beginning limit"}{item.endsAt ? ` · ends ${new Date(item.endsAt).toLocaleString()}` : ""}</small></td><td><strong>{rankLabel(item.priority)}</strong><small>order {item.sortOrder}</small></td><td>{treatmentLabel(item.treatment)}</td><td>{item.updatedBy}<small>{new Date(item.updatedAt).toLocaleString()}</small></td><td className="editorial-table-actions"><button type="button" onClick={() => editAnnouncement(item)}>Edit</button>{item.status !== "archived" ? <><button type="button" disabled={busy === `notice-state:${item.announcementId}`} onClick={() => void runTickerMutation(`notice-state:${item.announcementId}`, "notice-library", () => updateTickerAnnouncement(item.announcementId, { status: item.status === "paused" ? "active" : "paused" }), `Notice ${item.status === "paused" ? "activated" : "paused"} and recorded in the Transparency Ledger.`)}>{item.status === "paused" ? "Activate" : "Pause"}</button><button type="button" className="is-danger" disabled={busy === `notice-archive:${item.announcementId}`} onClick={() => void runTickerMutation(`notice-archive:${item.announcementId}`, "notice-library", () => updateTickerAnnouncement(item.announcementId, { status: "archived" }), "Notice archived and recorded in the Transparency Ledger.")}>Archive</button></> : <button type="button" onClick={() => void runTickerMutation(`notice-restore:${item.announcementId}`, "notice-library", () => updateTickerAnnouncement(item.announcementId, { status: "paused" }), "Notice restored in a paused state and recorded in the Transparency Ledger.")}>Restore paused</button>}</td></tr>) : <tr><td colSpan={6}>No ticker notices have been prepared.</td></tr>}
       </tbody></table></div>
     </section>
 
     <section className="editorial-source-manager" aria-labelledby="weather-manager-title">
       <header><span>Required source</span><h2 id="weather-manager-title">Weather Locations</h2><p>Add each Society site or place represented on the civic wire. At least one location remains active.</p></header>
+      <InlineFeedback feedback={feedback} scope="weather" />
       <div className="editorial-table-wrap"><table className="editorial-table"><thead><tr><th>Location</th><th>Conditions</th><th>State</th><th>Hierarchy</th><th>Health</th><th>Actions</th></tr></thead><tbody>
         {ticker?.weatherLocations.length ? ticker.weatherLocations.map((location) => {
           const isOnlyActive = location.enabled && location.status === "active" && activeWeatherCount === 1;
-          return <tr key={location.locationId}><td><strong>{location.label}</strong><small>{location.latitude.toFixed(4)}, {location.longitude.toFixed(4)} · {location.timezone}</small></td><td><strong>{location.conditionsMode}</strong><small>{treatmentLabel(location.treatment)} · {location.refreshMinutes} min</small></td><td><span className={`editorial-status is-${location.status}`}>{location.status}</span><small>{location.enabled ? "Enabled" : "Disabled"}</small></td><td><strong>{rankLabel(location.priority)}</strong><small>order {location.sortOrder}</small></td><td className={location.lastError ? "is-health-error" : ""}>{weatherHealth(location)}</td><td className="editorial-table-actions"><button type="button" onClick={() => editWeatherLocation(location)}>Configure</button>{location.status !== "archived" ? <><button type="button" title={isOnlyActive ? "At least one weather location must remain active." : undefined} disabled={isOnlyActive || busy === `weather-state:${location.locationId}`} onClick={() => void runTickerMutation(`weather-state:${location.locationId}`, () => updateTickerWeatherLocation(location.locationId, { status: location.status === "paused" ? "active" : "paused", enabled: location.status === "paused" ? true : location.enabled }), `Weather location ${location.status === "paused" ? "resumed" : "paused"} and recorded in the Transparency Ledger.`)}>{location.status === "paused" ? "Resume" : "Pause"}</button><button type="button" disabled={busy === `weather-refresh:${location.locationId}` || location.status !== "active" || !location.enabled} onClick={() => void runTickerMutation(`weather-refresh:${location.locationId}`, async () => { const result = await refreshTickerWeatherLocation(location.locationId); if (result.reason === "failed") throw new Error("The weather location could not refresh. Its health message has been retained for review."); return result; }, "Weather location refreshed.")}>Refresh</button><button type="button" className="is-danger" title={isOnlyActive ? "Add or activate another weather location before archiving this one." : undefined} disabled={isOnlyActive || busy === `weather-archive:${location.locationId}`} onClick={() => void runTickerMutation(`weather-archive:${location.locationId}`, () => updateTickerWeatherLocation(location.locationId, { status: "archived", enabled: false }), "Weather location archived and recorded in the Transparency Ledger.")}>Archive</button></> : <button type="button" onClick={() => void runTickerMutation(`weather-restore:${location.locationId}`, () => updateTickerWeatherLocation(location.locationId, { status: "paused", enabled: false }), "Weather location restored in a paused state and recorded in the Transparency Ledger.")}>Restore paused</button>}</td></tr>;
+          return <tr key={location.locationId}><td><strong>{location.label}</strong><small>{location.latitude.toFixed(4)}, {location.longitude.toFixed(4)} · {location.timezone}</small></td><td><strong>{location.conditionsMode}</strong><small>{treatmentLabel(location.treatment)} · {location.refreshMinutes} min</small></td><td><span className={`editorial-status is-${location.status}`}>{location.status}</span><small>{location.enabled ? "Enabled" : "Disabled"}</small></td><td><strong>{rankLabel(location.priority)}</strong><small>order {location.sortOrder}</small></td><td className={location.lastError ? "is-health-error" : ""}>{weatherHealth(location)}</td><td className="editorial-table-actions"><button type="button" onClick={() => editWeatherLocation(location)}>Configure</button>{location.status !== "archived" ? <><button type="button" title={isOnlyActive ? "At least one weather location must remain active." : undefined} disabled={isOnlyActive || busy === `weather-state:${location.locationId}`} onClick={() => void runTickerMutation(`weather-state:${location.locationId}`, "weather", () => updateTickerWeatherLocation(location.locationId, { status: location.status === "paused" ? "active" : "paused", enabled: location.status === "paused" ? true : location.enabled }), `Weather location ${location.status === "paused" ? "resumed" : "paused"} and recorded in the Transparency Ledger.`)}>{location.status === "paused" ? "Resume" : "Pause"}</button><button type="button" disabled={busy === `weather-refresh:${location.locationId}` || location.status !== "active" || !location.enabled} onClick={() => void runTickerMutation(`weather-refresh:${location.locationId}`, "weather", async () => { const result = await refreshTickerWeatherLocation(location.locationId); if (result.reason === "failed") throw new Error("The weather location could not refresh. Its health message has been retained for review."); return result; }, "Weather location refreshed.")}>Refresh</button><button type="button" className="is-danger" title={isOnlyActive ? "Add or activate another weather location before archiving this one." : undefined} disabled={isOnlyActive || busy === `weather-archive:${location.locationId}`} onClick={() => void runTickerMutation(`weather-archive:${location.locationId}`, "weather", () => updateTickerWeatherLocation(location.locationId, { status: "archived", enabled: false }), "Weather location archived and recorded in the Transparency Ledger.")}>Archive</button></> : <button type="button" onClick={() => void runTickerMutation(`weather-restore:${location.locationId}`, "weather", () => updateTickerWeatherLocation(location.locationId, { status: "paused", enabled: false }), "Weather location restored in a paused state and recorded in the Transparency Ledger.")}>Restore paused</button>}</td></tr>;
         }) : <tr><td colSpan={6}>The required weather collection has no locations.</td></tr>}
       </tbody></table></div>
 
@@ -399,8 +420,9 @@ export function EditorialStudio() {
 
     <section className="editorial-source-manager" aria-labelledby="source-manager-title">
       <header><span>Sources</span><h2 id="source-manager-title">Source Manager</h2><p>Manage built-in sources and RSS or Atom feeds.</p></header>
+      <InlineFeedback feedback={feedback} scope="source" />
       <div className="editorial-table-wrap"><table className="editorial-table"><thead><tr><th>Source</th><th>State</th><th>Hierarchy</th><th>Defaults</th><th>Health</th><th>Actions</th></tr></thead><tbody>
-        {ticker?.sources.map((source) => <tr key={source.sourceId}><td><strong>{source.label}</strong><small>{source.required ? "Required system source" : source.builtIn ? `Built-in ${source.sourceType}` : "Custom RSS"}{source.prefix ? ` · prefix “${source.prefix}”` : ""}</small></td><td><span className={`editorial-status is-${source.status}`}>{source.status}</span><small>{source.enabled ? "Enabled" : "Disabled"}</small></td><td><strong>{rankLabel(source.priority)}</strong><small>order {source.sortOrder}</small></td><td>{treatmentLabel(source.treatment)}<small>{source.sourceType === "rss" ? `${source.itemLimit} item${source.itemLimit === 1 ? "" : "s"} · ${source.refreshMinutes} min` : source.sourceKey === "south-pacific-weather" ? `${ticker.weatherLocations.filter((location) => location.enabled && location.status === "active").length} active locations` : "Generated live"}</small></td><td className={source.lastError ? "is-health-error" : ""}>{sourceHealth(source)}</td><td className="editorial-table-actions"><button type="button" onClick={() => editSource(source)}>Configure</button>{!source.required && (source.status !== "archived" ? <button type="button" disabled={busy === `source-state:${source.sourceId}`} onClick={() => void runTickerMutation(`source-state:${source.sourceId}`, () => updateTickerSource(source.sourceId, { status: source.status === "paused" ? "active" : "paused", enabled: source.status === "paused" ? true : source.enabled }), `Source ${source.status === "paused" ? "resumed" : "paused"} and recorded in the Transparency Ledger.`)}>{source.status === "paused" ? "Resume" : "Pause"}</button> : <button type="button" onClick={() => void runTickerMutation(`source-restore:${source.sourceId}`, () => updateTickerSource(source.sourceId, { status: "paused", enabled: false }), "Source restored in a paused state and recorded in the Transparency Ledger.")}>Restore paused</button>)}{(source.sourceType === "rss" || source.sourceKey === "south-pacific-weather") && source.status === "active" && <button type="button" disabled={busy === `source-refresh:${source.sourceId}`} onClick={() => void runTickerMutation(`source-refresh:${source.sourceId}`, async () => { const result = await refreshTickerSource(source.sourceId); if (result.reason === "failed") throw new Error("The source could not refresh. Its health message has been retained for review."); return result; }, "Source refresh completed.")}>Refresh</button>}{!source.builtIn && source.status !== "archived" && <button type="button" className="is-danger" onClick={() => void runTickerMutation(`source-archive:${source.sourceId}`, () => updateTickerSource(source.sourceId, { status: "archived", enabled: false }), "RSS source archived and recorded in the Transparency Ledger.")}>Archive</button>}</td></tr>)}
+        {ticker?.sources.map((source) => <tr key={source.sourceId}><td><strong>{source.label}</strong><small>{source.required ? "Required system source" : source.builtIn ? `Built-in ${source.sourceType}` : "Custom RSS"}{source.prefix ? ` · prefix “${source.prefix}”` : ""}</small></td><td><span className={`editorial-status is-${source.status}`}>{source.status}</span><small>{source.enabled ? "Enabled" : "Disabled"}</small></td><td><strong>{rankLabel(source.priority)}</strong><small>order {source.sortOrder}</small></td><td>{treatmentLabel(source.treatment)}<small>{source.sourceType === "rss" ? `${source.itemLimit} item${source.itemLimit === 1 ? "" : "s"} · ${source.refreshMinutes} min` : source.sourceKey === "south-pacific-weather" ? `${ticker.weatherLocations.filter((location) => location.enabled && location.status === "active").length} active locations` : "Generated live"}</small></td><td className={source.lastError ? "is-health-error" : ""}>{sourceHealth(source)}</td><td className="editorial-table-actions"><button type="button" onClick={() => editSource(source)}>Configure</button>{!source.required && (source.status !== "archived" ? <button type="button" disabled={busy === `source-state:${source.sourceId}`} onClick={() => void runTickerMutation(`source-state:${source.sourceId}`, "source", () => updateTickerSource(source.sourceId, { status: source.status === "paused" ? "active" : "paused", enabled: source.status === "paused" ? true : source.enabled }), `Source ${source.status === "paused" ? "resumed" : "paused"} and recorded in the Transparency Ledger.`)}>{source.status === "paused" ? "Resume" : "Pause"}</button> : <button type="button" onClick={() => void runTickerMutation(`source-restore:${source.sourceId}`, "source", () => updateTickerSource(source.sourceId, { status: "paused", enabled: false }), "Source restored in a paused state and recorded in the Transparency Ledger.")}>Restore paused</button>)}{(source.sourceType === "rss" || source.sourceKey === "south-pacific-weather") && source.status === "active" && <button type="button" disabled={busy === `source-refresh:${source.sourceId}`} onClick={() => void runTickerMutation(`source-refresh:${source.sourceId}`, "source", async () => { const result = await refreshTickerSource(source.sourceId); if (result.reason === "failed") throw new Error("The source could not refresh. Its health message has been retained for review."); return result; }, "Source refresh completed.")}>Refresh</button>}{!source.builtIn && source.status !== "archived" && <button type="button" className="is-danger" onClick={() => void runTickerMutation(`source-archive:${source.sourceId}`, "source", () => updateTickerSource(source.sourceId, { status: "archived", enabled: false }), "RSS source archived and recorded in the Transparency Ledger.")}>Archive</button>}</td></tr>)}
       </tbody></table></div>
 
       <form className="editorial-sheet source-editor" id="ticker-source-editor" onSubmit={saveSource}>
@@ -415,12 +437,12 @@ export function EditorialStudio() {
         <footer><span>Actor · {ticker?.actor || "Authenticated representative"}</span><div className="editorial-button-row"><button disabled={busy === "source"}>{busy === "source" ? "Saving…" : editingSourceId ? "Save source settings" : "Add RSS source"}</button>{editingSourceId && <button type="button" className="is-secondary" onClick={() => { setEditingSourceId(null); setSourceDraft({ ...emptySource }); }}>Cancel edit</button>}</div></footer>
       </form>
 
-      {suppressedFeedItems.length > 0 && <div className="editorial-suppressed"><h3>Suppressed feed items</h3><p>These remain available for restoration while their source still retains them.</p>{suppressedFeedItems.map((item) => <article key={item.itemId}><span>{sourceById.get(item.sourceId)?.label || "Feed"}</span><strong>{item.label}</strong><button type="button" onClick={() => void runTickerMutation(`feed-restore:${item.itemId}`, () => setTickerFeedItemSuppressed(item.itemId, false), "Feed item restored and recorded in the Transparency Ledger.")}>Restore</button></article>)}</div>}
+      {suppressedFeedItems.length > 0 && <div className="editorial-suppressed"><h3>Suppressed feed items</h3><p>These remain available for restoration while their source still retains them.</p>{suppressedFeedItems.map((item) => <article key={item.itemId}><span>{sourceById.get(item.sourceId)?.label || "Feed"}</span><strong>{item.label}</strong><button type="button" onClick={() => void runTickerMutation(`feed-restore:${item.itemId}`, "source", () => setTickerFeedItemSuppressed(item.itemId, false), "Feed item restored and recorded in the Transparency Ledger.")}>Restore</button></article>)}</div>}
     </section>
 
     <section className="editorial-bridge" aria-labelledby="editorial-bridge-title">
       <div><span>WordPress</span><h2 id="editorial-bridge-title">Archive tools</h2></div>
-      <aside><strong>Read-only connection</strong><p>Sync published posts or download the draft handoff file.</p><button type="button" onClick={synchronizeArchive} disabled={busy === "sync"}>{busy === "sync" ? "Synchronizing…" : "Synchronize published posts"}</button><button type="button" onClick={downloadHandoff} disabled={busy === "handoff"}>{busy === "handoff" ? "Preparing…" : "Download handoff file"}</button></aside>
+      <aside><strong>Read-only connection</strong><p>Sync published posts or download the draft handoff file.</p><InlineFeedback feedback={feedback} scope="archive" /><button type="button" onClick={synchronizeArchive} disabled={busy === "sync"}>{busy === "sync" ? "Synchronizing…" : "Synchronize published posts"}</button><button type="button" onClick={downloadHandoff} disabled={busy === "handoff"}>{busy === "handoff" ? "Preparing…" : "Download handoff file"}</button></aside>
     </section>
 
     <section className="editorial-publications" aria-label="Aggregate public analytics"><header><span>Last 30 days</span><h2>Traffic sources</h2><p>{analytics?.privacy || "Public page views only."}</p></header><div>{analytics?.sources.length ? analytics.sources.slice(0, 8).map((source) => <article key={`${source.source_group}:${source.source_detail}`}><span>{source.source_group}</span><strong>{source.source_detail || "No external referrer"}</strong><small>{Number(source.views).toLocaleString("en-US")} page views</small></article>) : <article><span>No traffic yet</span><strong>No source totals</strong><small>Data will appear after public visits.</small></article>}</div></section>
