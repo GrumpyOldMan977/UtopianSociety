@@ -36,7 +36,7 @@ type WeatherDraft = { label: string; latitude: number; longitude: number; timezo
 type FeedbackScope = "draft" | "notice-editor" | "current-wire" | "notice-library" | "weather" | "source" | "archive";
 type EditorialFeedback = { scope: FeedbackScope; kind: "success" | "error"; message: string };
 type EditorialSection = "publishing" | "civic-wire" | "insights" | "archive";
-type EditorialView = "draft" | "recent" | "rotation" | "notices" | "weather" | "sources" | "traffic" | "tools";
+type EditorialView = "draft" | "recent" | "rotation" | "notices" | "weather" | "sources" | "traffic" | "immigration" | "tools";
 const emptyNotice: NoticeDraft = { label: "", href: "", status: "draft", startsAt: "", endsAt: "", priority: 10, sortOrder: 0, treatment: "standard" };
 const emptySource: SourceDraft = { label: "", endpointUrl: "", creditUrl: "", prefix: "", enabled: true, status: "active", priority: 10, sortOrder: 0, treatment: "standard", itemLimit: 3, refreshMinutes: 5 };
 const emptyWeather: WeatherDraft = { label: "", latitude: 0, longitude: 0, timezone: "UTC", conditionsMode: "land", enabled: true, status: "active", priority: 10, sortOrder: 0, treatment: "standard", refreshMinutes: 5 };
@@ -51,7 +51,7 @@ const editorialSections: Array<{ id: EditorialSection; label: string }> = [
 const editorialViews: Record<EditorialSection, Array<{ id: EditorialView; label: string }>> = {
   publishing: [{ id: "draft", label: "New Draft" }, { id: "recent", label: "Recent Publications" }],
   "civic-wire": [{ id: "rotation", label: "Rotation" }, { id: "notices", label: "Notices" }, { id: "weather", label: "Weather" }, { id: "sources", label: "Sources" }],
-  insights: [{ id: "traffic", label: "Traffic" }],
+  insights: [{ id: "traffic", label: "Traffic" }, { id: "immigration", label: "Immigration" }],
   archive: [{ id: "tools", label: "WordPress Tools" }],
 };
 
@@ -567,6 +567,25 @@ export function EditorialStudio() {
     </section>}
 
     {activeSection === "insights" && activeView === "traffic" && <section className="editorial-publications" aria-label="Aggregate public analytics"><header><span>Last 30 days</span><h2>Traffic sources</h2><p>{analytics?.privacy || "Public page views only."}</p></header><div>{analytics?.sources.length ? analytics.sources.slice(0, 8).map((source) => <article key={`${source.source_group}:${source.source_detail}`}><span>{source.source_group}</span><strong>{source.source_detail || "No external referrer"}</strong><small>{Number(source.views).toLocaleString("en-US")} page views</small></article>) : <article><span>No traffic yet</span><strong>No source totals</strong><small>Data will appear after public visits.</small></article>}</div></section>}
+    {activeSection === "insights" && activeView === "immigration" && <section className="editorial-assessment-analytics" aria-label="Founder immigration assessment analytics">
+      <header><span>Founder-only aggregate</span><h2>Immigration assessment activity</h2><p>{analytics?.immigration.privacy || "Exact aggregate assessment activity without individual answers or applicant identities."}</p></header>
+      <div className="editorial-assessment-headline">
+        <article><span>Active population</span><strong>{Number(analytics?.immigration.citizens.active || 0).toLocaleString("en-US")}</strong><small>{Number(analytics?.immigration.citizens.total || 0).toLocaleString("en-US")} total citizen record{Number(analytics?.immigration.citizens.total || 0) === 1 ? "" : "s"}</small></article>
+        <article><span>Naturalization attempts</span><strong>{Number(analytics?.immigration.naturalization.lifetime.started || 0).toLocaleString("en-US")}</strong><small>All dynamic attempts started</small></article>
+        <article><span>Practice attempts</span><strong>{Number(analytics?.immigration.practice.lifetime.started || 0).toLocaleString("en-US")}</strong><small>Authenticated, non-issuing runs</small></article>
+      </div>
+      <div className="editorial-table-wrap"><table className="editorial-table"><thead><tr><th>Assessment window</th><th>Started</th><th>Completed</th><th>Met standard</th><th>Not passed</th><th>Incomplete</th><th>In progress</th><th>Certificates</th></tr></thead><tbody>
+        {analytics ? ([
+          ["Naturalization · lifetime", analytics.immigration.naturalization.lifetime],
+          ["Naturalization · 30 days", analytics.immigration.naturalization.last30Days],
+          ["Naturalization · 7 days", analytics.immigration.naturalization.last7Days],
+          ["Practice · lifetime", analytics.immigration.practice.lifetime],
+          ["Practice · 30 days", analytics.immigration.practice.last30Days],
+          ["Practice · 7 days", analytics.immigration.practice.last7Days],
+        ] as const).map(([label, metrics]) => <tr key={label}><td><strong>{label}</strong></td><td>{metrics.started.toLocaleString("en-US")}</td><td>{metrics.completed.toLocaleString("en-US")}</td><td>{metrics.metStandard.toLocaleString("en-US")}</td><td>{metrics.notPassed.toLocaleString("en-US")}</td><td>{metrics.incomplete.toLocaleString("en-US")}</td><td>{metrics.inProgress.toLocaleString("en-US")}</td><td>{metrics.certificatesIssued.toLocaleString("en-US")}</td></tr>) : <tr><td colSpan={8}>Assessment analytics are loading.</td></tr>}
+      </tbody></table></div>
+      <footer>Incomplete means the two-hour attempt window expired before scoring. Individual attempts and results are not published to the Transparency Ledger; only privacy-thresholded weekly aggregates are.</footer>
+    </section>}
     {activeSection === "publishing" && activeView === "recent" && <section className="editorial-publications" aria-label="Recent publication inventory"><header><span>Publications</span><h2>Recent records</h2></header><div>{status?.recentPublications.map((item) => <article key={item.publicationId}><span>{item.status} · {item.type}</span><strong>{item.title}</strong><small>{item.utopianDate || "Date pending"}</small></article>)}</div></section>}
       </div>
     </div>

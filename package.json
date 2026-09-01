@@ -18,6 +18,7 @@
     "civic:seed:editorial": "node scripts/seed-editorial-local.mjs",
     "civic:query:local": "wrangler d1 execute utopian-civic-v3-local --config cloudflare/civic-ledger/wrangler.local.jsonc --local --command",
     "civic:test:assessment": "node scripts/test-local-assessment.mjs",
+    "civic:test:immigration-integrity": "node scripts/test-local-immigration-integrity.mjs",
     "civic:test:learning": "node scripts/test-local-learning-evaluation.mjs",
     "civic:test:workflow": "node scripts/test-local-civic-workflow.mjs",
     "civic:test:routes": "node scripts/test-local-routes.mjs",

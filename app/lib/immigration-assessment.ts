@@ -31,6 +31,7 @@ export type ImmigrationAssessmentQuestion = {
 export type ImmigrationAssessmentAttempt = {
   attemptId: string;
   version: "immigration-v2";
+  purpose: "naturalization" | "practice";
   startedAt: string;
   expiresAt: string;
   selectionFingerprint: string;
@@ -47,6 +48,7 @@ export type ImmigrationAssessmentAttempt = {
 export type ImmigrationAssessmentResult = {
   attemptId: string;
   version: "immigration-v2";
+  purpose: "naturalization" | "practice";
   score: number;
   passed: boolean;
   categoryResults: Array<{ key: string; label: string; correct: number; total: number; passed: boolean }>;

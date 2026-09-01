@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ASSESSMENT_PASSING_SCORE,
@@ -53,6 +53,8 @@ export function ImmigrationApplication() {
   const [assessmentStarting, setAssessmentStarting] = useState(false);
   const [assessmentScoring, setAssessmentScoring] = useState(false);
   const [assessmentResult, setAssessmentResult] = useState<ImmigrationAssessmentResult | null>(null);
+  const [assessmentPurpose, setAssessmentPurpose] = useState<"naturalization" | "practice">("naturalization");
+  const [practiceAvailable, setPracticeAvailable] = useState(false);
   const [signature, setSignature] = useState("");
   const [oathAccepted, setOathAccepted] = useState(false);
   const [certificate, setCertificate] = useState<Certificate | null>(null);
@@ -60,10 +62,15 @@ export function ImmigrationApplication() {
   const [issuanceError, setIssuanceError] = useState("");
   const issuanceKey = useRef("");
 
-  const activeStep = stageNumber(stage);
+  const isPractice = assessmentPurpose === "practice";
+  const activeStep = isPractice ? (stage === "assessment" ? 1 : 2) : stageNumber(stage);
   const totalPages = Math.ceil((attempt?.questions.length || 0) / PAGE_SIZE);
   const visibleQuestions = attempt?.questions.slice(assessmentPage * PAGE_SIZE, (assessmentPage + 1) * PAGE_SIZE) || [];
   const answeredCount = Object.keys(answers).length;
+
+  useEffect(() => {
+    setPracticeAvailable(Boolean(sessionStorage.getItem("utopia.civicSession")));
+  }, []);
 
   function updateAcknowledgement(index: number, checked: boolean) {
     setAcknowledgements((current) => current.map((value, currentIndex) => currentIndex === index ? checked : value));
@@ -82,7 +89,8 @@ export function ImmigrationApplication() {
     setAssessmentStarting(true);
     setAssessmentError("");
     try {
-      const prepared = await startImmigrationAssessment();
+      setAssessmentPurpose("naturalization");
+      const prepared = await startImmigrationAssessment("naturalization");
       setAttempt(prepared);
       setAnswers({});
       setEasterResponse("");
@@ -92,6 +100,28 @@ export function ImmigrationApplication() {
       document.getElementById("immigration-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
       setAssessmentError(error instanceof Error ? error.message : "The civic server could not prepare an assessment.");
+    } finally {
+      setAssessmentStarting(false);
+    }
+  }
+
+  async function beginPracticeAssessment() {
+    setAssessmentPurpose("practice");
+    setAssessmentStarting(true);
+    setAssessmentError("");
+    try {
+      const prepared = await startImmigrationAssessment("practice");
+      setAttempt(prepared);
+      setAnswers({});
+      setEasterResponse("");
+      setAssessmentPage(0);
+      setAssessmentResult(null);
+      setStage("assessment");
+      document.getElementById("immigration-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (error) {
+      setAssessmentError(error instanceof Error ? error.message : "The civic server could not prepare a practice assessment.");
+      setAssessmentPurpose("naturalization");
+      setPracticeAvailable(false);
     } finally {
       setAssessmentStarting(false);
     }
@@ -127,6 +157,7 @@ export function ImmigrationApplication() {
           optionIndex: answers[question.id],
         })),
         easterResponse,
+        purpose: assessmentPurpose,
       });
       setAssessmentResult(result);
       setStage("result");
@@ -141,7 +172,7 @@ export function ImmigrationApplication() {
   async function retakeAssessment() {
     setAssessmentStarting(true);
     try {
-      const prepared = await startImmigrationAssessment();
+      const prepared = await startImmigrationAssessment(assessmentPurpose);
       setAttempt(prepared);
       setAnswers({});
       setEasterResponse("");
@@ -207,14 +238,19 @@ export function ImmigrationApplication() {
   return <section className="immigration-workspace" id="immigration-workspace" aria-labelledby="immigration-workspace-title">
     <div className="immigration-process-header">
       <div>
-        <span className="eyebrow">Hopeful intake · Civic naturalization</span>
-        <h2 id="immigration-workspace-title">Enter the covenant with clarity.</h2>
+        <span className="eyebrow">{isPractice ? "Certified citizen · Practice assessment" : "Hopeful intake · Civic naturalization"}</span>
+        <h2 id="immigration-workspace-title">{isPractice ? "Revisit the civic standard safely." : "Enter the covenant with clarity."}</h2>
       </div>
-      <p>Your statements and contact field remain in this browser. Answers travel only to the civic service for in-memory scoring and are discarded; only successful certificate details—civic name, score, dates, serial, and standing—enter the protected civic record. Certificate identifiers are not published.</p>
+      <p>{isPractice ? "This authenticated practice run records only aggregate assessment status and scores. It cannot issue another certificate, create another citizen, or alter the public population." : "Your statements and contact field remain in this browser. Answers travel only to the civic service for in-memory scoring and are discarded; only successful certificate details—civic name, score, dates, serial, and standing—enter the protected civic record. Certificate identifiers are not published."}</p>
     </div>
 
-    <ol className="immigration-stepper" aria-label="Symbolic naturalization process">
-      {["Declaration", "Assessment", "Oath", "Certificate"].map((label, index) => <li className={activeStep === index + 1 ? "is-current" : activeStep > index + 1 ? "is-complete" : ""} key={label}>
+    {stage === "declaration" && practiceAvailable && <aside className="immigration-practice-entry">
+      <div><span>Already certified?</span><strong>Take the current assessment in practice mode.</strong><p>No declaration, oath, certificate, citizen record, or population change can result.</p></div>
+      <button type="button" onClick={() => void beginPracticeAssessment()} disabled={assessmentStarting}>{assessmentStarting && isPractice ? "Preparing practice…" : "Begin practice assessment"}</button>
+    </aside>}
+
+    <ol className={`immigration-stepper${isPractice ? " is-practice" : ""}`} aria-label={isPractice ? "Practice assessment process" : "Symbolic naturalization process"}>
+      {(isPractice ? ["Assessment", "Result"] : ["Declaration", "Assessment", "Oath", "Certificate"]).map((label, index) => <li className={activeStep === index + 1 ? "is-current" : activeStep > index + 1 ? "is-complete" : ""} key={label}>
         <b>{String(index + 1).padStart(2, "0")}</b><span>{label}</span>
       </li>)}
     </ol>
@@ -264,7 +300,7 @@ export function ImmigrationApplication() {
 
     {stage === "assessment" && <div className="immigration-assessment">
       <header id="assessment-heading">
-        <div><span>Civic Comprehension Assessment · unique attempt</span><h3>Questions {assessmentPage * PAGE_SIZE + 1}–{Math.min((assessmentPage + 1) * PAGE_SIZE, attempt?.questions.length || 101)}</h3></div>
+        <div><span>Civic Comprehension Assessment · {isPractice ? "non-issuing practice" : "unique attempt"}</span><h3>Questions {assessmentPage * PAGE_SIZE + 1}–{Math.min((assessmentPage + 1) * PAGE_SIZE, attempt?.questions.length || 101)}</h3></div>
         <div className="assessment-progress" aria-label={`${answeredCount} of 100 questions answered`}><b>{answeredCount}</b><span>of 100 answered</span><i><span style={{ width: `${answeredCount}%` }} /></i></div>
       </header>
       <p className="assessment-note">Passing requires {ASSESSMENT_PASSING_SCORE} correct answers overall and at least {CATEGORY_PASSING_SCORE} of 10 in every civic domain. The server selected this attempt from 400 approved questions, randomized its choices, and keeps every correct answer out of the browser bundle.</p>
@@ -298,9 +334,11 @@ export function ImmigrationApplication() {
       <div className="domain-results">{assessmentResult.categoryResults.map((result) => <div className={result.passed ? "has-passed-domain" : "has-not-passed-domain"} key={result.key}><span>{result.label}</span><b>{result.correct}/{result.total}</b><i><span style={{ width: `${(result.correct / result.total) * 100}%` }} /></i></div>)}</div>
       <p className="assessment-privacy-result">Individual answers were scored in memory and discarded. The civic record retains only the result, domain totals, assessment version, and unique selection fingerprint.</p>
       {assessmentResult.easterEgg.recognized && <p className="assessment-easter-result">Question 101 understood. The bridgekeeper permits a knowing nod. 😅</p>}
-      {assessmentResult.passed
-        ? <button className="immigration-primary-action" type="button" onClick={() => setStage("oath")}>Proceed to the voluntary oath</button>
-        : <div className="result-actions"><button type="button" onClick={retakeAssessment} disabled={assessmentStarting}>{assessmentStarting ? "Preparing a new selection…" : "Retake with a new question selection"}</button><Link href="/corpus/immigration-codex">Review the Immigration Codex</Link></div>}
+      {isPractice
+        ? <div className="result-actions"><button type="button" onClick={retakeAssessment} disabled={assessmentStarting}>{assessmentStarting ? "Preparing a new selection…" : "Practice with a new question selection"}</button><Link href="/portal">Return to my Civic Profile</Link></div>
+        : assessmentResult.passed
+          ? <button className="immigration-primary-action" type="button" onClick={() => setStage("oath")}>Proceed to the voluntary oath</button>
+          : <div className="result-actions"><button type="button" onClick={retakeAssessment} disabled={assessmentStarting}>{assessmentStarting ? "Preparing a new selection…" : "Retake with a new question selection"}</button><Link href="/corpus/immigration-codex">Review the Immigration Codex</Link></div>}
     </div>}
 
     {stage === "oath" && <form className="immigration-oath" onSubmit={issueCertificate}>

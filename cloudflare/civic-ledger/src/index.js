@@ -42,6 +42,7 @@ const ASSESSMENT_VERSION_V1 = "immigration-v1";
 const ASSESSMENT_QUESTION_COUNT = 100;
 const ASSESSMENT_PASSING_SCORE = 90;
 const ASSESSMENT_ATTEMPT_LIFETIME_MS = 2 * 60 * 60 * 1000;
+const PUBLIC_ASSESSMENT_OUTCOME_THRESHOLD = 5;
 const CERTIFICATE_COLLISION_RETRIES = 6;
 // Cloudflare Workers Web Crypto rejects PBKDF2 iteration counts above 100,000.
 // Keep new credentials portable between the local and production runtimes.
@@ -272,10 +273,28 @@ function publicAssessmentQuestion(question, ordinal, optionOrder) {
   };
 }
 
-async function startAssessment(request, env) {
+async function startAssessment(request, env, input = {}) {
   requirePublicOrigin(request);
   const now = new Date();
   const attemptId = `USA-${crypto.randomUUID()}`;
+  const purpose = input.purpose === "practice" ? "practice" : "naturalization";
+  let civicId = null;
+  if (purpose === "practice") {
+    const session = await requireCivicSession(request, env);
+    const citizen = await env.DB.prepare(`
+      SELECT civic_id FROM citizens
+      WHERE civic_id = ?1 AND standing IN ('active', 'independent')
+      LIMIT 1
+    `).bind(session.civic_id).first();
+    if (!citizen) {
+      throw new ClientError(
+        "Practice assessments are available to certified citizens with current standing.",
+        403,
+        "practice_assessment_unavailable",
+      );
+    }
+    civicId = session.civic_id;
+  }
   const qaRun = env.DEPLOYMENT_MODE === "local-v3"
     && request.headers.get("x-utopian-qa-run") === "automated";
   const selected = [];
@@ -308,15 +327,21 @@ async function startAssessment(request, env) {
   const attemptStatement = env.DB.prepare(`
     INSERT INTO assessment_attempts (
       attempt_id, assessment_version, selection_fingerprint, status,
-      started_at, expires_at, source_label
-    ) VALUES (?1, ?2, ?3, 'started', ?4, ?5, ?6)
+      started_at, expires_at, source_label, purpose, civic_id
+    ) VALUES (?1, ?2, ?3, 'started', ?4, ?5, ?6, ?7, ?8)
   `).bind(
     attemptId,
     ASSESSMENT_VERSION_V2,
     fingerprint,
     startedAt,
     expiresAt,
-    qaRun ? "Local QA · automated immigration assessment" : "Immigration Civic Assessment · randomized v2",
+    qaRun
+      ? "Local QA · automated immigration assessment"
+      : purpose === "practice"
+        ? "Certified citizen practice assessment · randomized v2"
+        : "Immigration Civic Assessment · randomized v2",
+    purpose,
+    civicId,
   );
   const questionStatements = preparedQuestions.map(({ question, ordinal, optionOrder }) => env.DB.prepare(`
     INSERT INTO assessment_attempt_questions (
@@ -333,6 +358,7 @@ async function startAssessment(request, env) {
   return {
     attemptId,
     version: ASSESSMENT_VERSION_V2,
+    purpose,
     startedAt,
     expiresAt,
     selectionFingerprint: fingerprint,
@@ -353,7 +379,8 @@ async function startAssessment(request, env) {
 async function assessmentAttempt(env, attemptId) {
   return env.DB.prepare(`
     SELECT attempt_id, assessment_version, selection_fingerprint, status, score,
-           category_scores_json, started_at, expires_at, completed_at, issued_civic_id
+           category_scores_json, started_at, expires_at, completed_at, issued_civic_id,
+           purpose, civic_id
     FROM assessment_attempts WHERE attempt_id = ?1 LIMIT 1
   `).bind(attemptId).first();
 }
@@ -364,6 +391,12 @@ async function scoreAssessmentV2(request, env, input) {
   const attempt = await assessmentAttempt(env, attemptId);
   if (!attempt || attempt.assessment_version !== ASSESSMENT_VERSION_V2) {
     throw new ClientError("This assessment attempt could not be found.", 404, "assessment_not_found");
+  }
+  if (attempt.purpose === "practice") {
+    const session = await requireCivicSession(request, env);
+    if (session.civic_id !== attempt.civic_id) {
+      throw new ClientError("This practice assessment belongs to another civic session.", 403, "practice_assessment_owner_mismatch");
+    }
   }
   if (attempt.status !== "started") {
     throw new ClientError("This assessment attempt has already been completed.", 409, "assessment_completed");
@@ -438,6 +471,7 @@ async function scoreAssessmentV2(request, env, input) {
   return {
     attemptId,
     version: ASSESSMENT_VERSION_V2,
+    purpose: attempt.purpose || "naturalization",
     score,
     passed,
     categoryResults,
@@ -712,6 +746,23 @@ async function civicAccountByCivicId(env, civicId) {
   `).bind(civicId).first();
 }
 
+function civicProfileFoundationStatements(env, civicId, civicName, createdAt) {
+  return [
+    env.DB.prepare(`
+      INSERT OR IGNORE INTO civic_profiles (
+        civic_id, civic_name, immigration_standing, learning_tier,
+        contribution_status, residence_status, profile_visibility,
+        created_at, updated_at
+      ) VALUES (?1, ?2, 'active symbolic citizen', 'unassigned',
+        'unassigned', 'unassigned', 'private', ?3, ?3)
+    `).bind(civicId, civicName, createdAt),
+    env.DB.prepare(`
+      INSERT OR IGNORE INTO ccu_accounts (civic_id, balance_micros, updated_at)
+      VALUES (?1, 0, ?2)
+    `).bind(civicId, createdAt),
+  ];
+}
+
 async function requireCurrentCivicPassword(env, civicId, suppliedPassword) {
   const password = cleanPassword(suppliedPassword);
   const account = await env.DB.prepare(`
@@ -743,6 +794,7 @@ async function requireCurrentCivicPassword(env, civicId, suppliedPassword) {
 }
 
 async function provisionPendingCivicAccount(env, civicId, civicName, certificateSerial, createdAt) {
+  await env.DB.batch(civicProfileFoundationStatements(env, civicId, civicName, createdAt));
   const existing = await civicAccountByCivicId(env, civicId);
   if (existing?.status === "active") return { account: existing, activationToken: null };
 
@@ -1376,9 +1428,18 @@ async function citizenByIssuanceKey(env, issuanceKey) {
   return env.DB.prepare(`
     SELECT civic_id, civic_name, certificate_number, standing, assessment_score,
            utopian_joined_date, gregorian_joined_date, joined_at, entry_ledger_id,
-           issuance_key, assessment_version
+           issuance_key, assessment_version, assessment_attempt_id
     FROM citizens WHERE issuance_key = ?1 LIMIT 1
   `).bind(issuanceKey).first();
+}
+
+async function citizenByAssessmentAttempt(env, attemptId) {
+  return env.DB.prepare(`
+    SELECT civic_id, civic_name, certificate_number, standing, assessment_score,
+           utopian_joined_date, gregorian_joined_date, joined_at, entry_ledger_id,
+           issuance_key, assessment_version, assessment_attempt_id
+    FROM citizens WHERE assessment_attempt_id = ?1 LIMIT 1
+  `).bind(attemptId).first();
 }
 
 async function issueCertificate(request, env, input) {
@@ -1407,9 +1468,6 @@ async function issueCertificate(request, env, input) {
     if (!verifiedAttempt || verifiedAttempt.assessment_version !== ASSESSMENT_VERSION_V2) {
       throw new ClientError("The verified assessment attempt could not be found.", 404, "assessment_not_found");
     }
-    if (!['passed', 'issued'].includes(verifiedAttempt.status)) {
-      throw new ClientError("The assessment has not met both the overall and category standards.", 422, "assessment_not_passed");
-    }
     score = Number(verifiedAttempt.score);
   } else {
     score = scoreAssessment(input.answers);
@@ -1422,6 +1480,9 @@ async function issueCertificate(request, env, input) {
   if (existing) {
     if (existing.civic_name.toLocaleLowerCase() !== civicName.toLocaleLowerCase()) {
       throw new ClientError("This issuance request is already associated with a different civic name.", 409, "issuance_key_reused");
+    }
+    if (verifiedAttempt && existing.assessment_attempt_id !== verifiedAttempt.attempt_id) {
+      throw new ClientError("This issuance request is already associated with a different assessment.", 409, "issuance_key_reused");
     }
     const provisioned = civicV3Enabled(env)
       ? await provisionPendingCivicAccount(
@@ -1439,6 +1500,26 @@ async function issueCertificate(request, env, input) {
         activationToken: provisioned.activationToken,
       } : null,
     };
+  }
+
+  if (verifiedAttempt) {
+    if (verifiedAttempt.purpose === "practice") {
+      throw new ClientError(
+        "Practice assessments report a private result and cannot issue a certificate.",
+        409,
+        "practice_assessment_no_issuance",
+      );
+    }
+    if (await citizenByAssessmentAttempt(env, verifiedAttempt.attempt_id)) {
+      throw new ClientError(
+        "This assessment pass has already been used for its one certificate.",
+        409,
+        "assessment_already_issued",
+      );
+    }
+    if (verifiedAttempt.status !== "passed") {
+      throw new ClientError("The assessment has not met both the overall and category standards.", 422, "assessment_not_passed");
+    }
   }
 
   await verifyTurnstile(request, env, input.turnstileToken, issuanceKey);
@@ -1477,12 +1558,13 @@ async function issueCertificate(request, env, input) {
       INSERT INTO citizens (
         civic_id, civic_name, certificate_number, standing, assessment_score,
         utopian_joined_date, gregorian_joined_date, joined_at, entry_ledger_id,
-        source_label, created_at, issuance_key, assessment_version
-      ) VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+        source_label, created_at, issuance_key, assessment_version,
+        assessment_attempt_id
+      ) VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
     `).bind(
       civicId, civicName, serial, score, utopianDate, gregorianDate, joinedAt,
       prepared.id, entryInput.sourceLabel, prepared.recordedAt, issuanceKey,
-      input.assessmentVersion,
+      input.assessmentVersion, verifiedAttempt?.attempt_id || null,
     );
 
     const issuanceStatements = [prepared.statement, citizenStatement];
@@ -1490,6 +1572,7 @@ async function issueCertificate(request, env, input) {
     if (civicV3Enabled(env)) {
       activationToken = randomToken();
       const activationTokenHash = await digest(activationToken);
+      issuanceStatements.push(...civicProfileFoundationStatements(env, civicId, civicName, joinedAt));
       issuanceStatements.push(env.DB.prepare(`
         INSERT INTO civic_accounts (
           account_id, civic_id, login_name, activation_certificate_number,
@@ -1544,6 +1627,13 @@ async function issueCertificate(request, env, input) {
             activationToken: provisioned.activationToken,
           } : null,
         };
+      }
+      if (verifiedAttempt && await citizenByAssessmentAttempt(env, verifiedAttempt.attempt_id)) {
+        throw new ClientError(
+          "This assessment pass has already been used for its one certificate.",
+          409,
+          "assessment_already_issued",
+        );
       }
       if (!String(error).includes("UNIQUE") || attempt === CERTIFICATE_COLLISION_RETRIES - 1) throw error;
     }
@@ -5388,15 +5478,70 @@ async function recordPublicAnalytics(request, env, input) {
   return { recorded: true, aggregateOnly: true };
 }
 
+function publicAssessmentMetric(row) {
+  return {
+    started: Number(row?.started || 0),
+    inProgress: Number(row?.in_progress || 0),
+    completed: Number(row?.completed || 0),
+    metStandard: Number(row?.met_standard || 0),
+    notPassed: Number(row?.not_passed || 0),
+    incomplete: Number(row?.incomplete || 0),
+    certificatesIssued: Number(row?.certificates_issued || 0),
+  };
+}
+
+async function assessmentMetricPeriod(env, purpose, since, now) {
+  const row = await env.DB.prepare(`
+    SELECT
+      COUNT(*) AS started,
+      SUM(CASE WHEN status = 'started' AND expires_at > ?3 THEN 1 ELSE 0 END) AS in_progress,
+      SUM(CASE WHEN status IN ('passed', 'not_passed', 'issued') THEN 1 ELSE 0 END) AS completed,
+      SUM(CASE WHEN status IN ('passed', 'issued') THEN 1 ELSE 0 END) AS met_standard,
+      SUM(CASE WHEN status = 'not_passed' THEN 1 ELSE 0 END) AS not_passed,
+      SUM(CASE WHEN status = 'expired' OR (status = 'started' AND expires_at <= ?3) THEN 1 ELSE 0 END) AS incomplete,
+      SUM(CASE WHEN status = 'issued' THEN 1 ELSE 0 END) AS certificates_issued
+    FROM assessment_attempts
+    WHERE purpose = ?1 AND (?2 IS NULL OR started_at >= ?2)
+  `).bind(purpose, since, now).first();
+  return publicAssessmentMetric(row);
+}
+
+async function editorialImmigrationAnalytics(env, now = new Date()) {
+  const nowIso = now.toISOString();
+  const since7 = new Date(now.getTime() - 7 * DAY_IN_MS).toISOString();
+  const since30 = new Date(now.getTime() - 30 * DAY_IN_MS).toISOString();
+  const [naturalizationLifetime, naturalization30, naturalization7, practiceLifetime, practice30, practice7, citizens] = await Promise.all([
+    assessmentMetricPeriod(env, "naturalization", null, nowIso),
+    assessmentMetricPeriod(env, "naturalization", since30, nowIso),
+    assessmentMetricPeriod(env, "naturalization", since7, nowIso),
+    assessmentMetricPeriod(env, "practice", null, nowIso),
+    assessmentMetricPeriod(env, "practice", since30, nowIso),
+    assessmentMetricPeriod(env, "practice", since7, nowIso),
+    env.DB.prepare(`
+      SELECT COUNT(*) AS total,
+        SUM(CASE WHEN standing = 'active' THEN 1 ELSE 0 END) AS active
+      FROM citizens
+    `).first(),
+  ]);
+  return {
+    generatedAt: nowIso,
+    naturalization: { lifetime: naturalizationLifetime, last30Days: naturalization30, last7Days: naturalization7 },
+    practice: { lifetime: practiceLifetime, last30Days: practice30, last7Days: practice7 },
+    citizens: { total: Number(citizens?.total || 0), active: Number(citizens?.active || 0) },
+    privacy: "Exact Founder-only aggregate. No applicant answers, contact fields, IP addresses, or individual attempt identities are retained here.",
+  };
+}
+
 async function editorialAnalytics(request, env, url) {
   await requireEditorialAuthority(request, env);
   const days = Math.min(365, Math.max(1, Number(url.searchParams.get("days")) || 30));
   const since = new Date(Date.now() - (days - 1) * DAY_IN_MS).toISOString().slice(0, 10);
-  const [totals, sources, paths, daily] = await Promise.all([
+  const [totals, sources, paths, daily, immigration] = await Promise.all([
     env.DB.prepare(`SELECT COALESCE(SUM(views), 0) AS views FROM public_analytics_daily WHERE day_utc >= ?1`).bind(since).first(),
     env.DB.prepare(`SELECT source_group, source_detail, SUM(views) AS views FROM public_analytics_daily WHERE day_utc >= ?1 GROUP BY source_group, source_detail ORDER BY views DESC LIMIT 30`).bind(since).all(),
     env.DB.prepare(`SELECT path, SUM(views) AS views FROM public_analytics_daily WHERE day_utc >= ?1 GROUP BY path ORDER BY views DESC LIMIT 30`).bind(since).all(),
     env.DB.prepare(`SELECT day_utc, SUM(views) AS views FROM public_analytics_daily WHERE day_utc >= ?1 GROUP BY day_utc ORDER BY day_utc ASC`).bind(since).all(),
+    editorialImmigrationAnalytics(env),
   ]);
   return {
     days,
@@ -5405,6 +5550,7 @@ async function editorialAnalytics(request, env, url) {
     sources: sources.results || [],
     paths: paths.results || [],
     daily: daily.results || [],
+    immigration,
     privacy: "Aggregate page views only; no IP, civic identity, user agent, or full referrer URL is retained.",
   };
 }
@@ -6205,7 +6351,7 @@ function tickerPrefixedLabel(prefix, label) {
 
 async function currentTickerItems(env) {
   const now = new Date().toISOString();
-  const [sourceResult, announcementResult, feedResult, populationRow, ledgerRow] = await Promise.all([
+  const [sourceResult, announcementResult, feedResult, populationRow, ledgerRow, assessmentMetrics] = await Promise.all([
     env.DB.prepare(`SELECT * FROM ticker_sources WHERE enabled = 1 AND status = 'active' ORDER BY priority DESC, sort_order ASC`).all(),
     env.DB.prepare(`
       SELECT * FROM ticker_announcements
@@ -6227,6 +6373,7 @@ async function currentTickerItems(env) {
     `).all(),
     env.DB.prepare("SELECT COUNT(*) AS active FROM citizens WHERE standing = 'active'").first(),
     env.DB.prepare("SELECT MAX(seq) AS sequence FROM ledger_entries").first(),
+    assessmentMetricPeriod(env, "naturalization", null, now),
   ]);
   const sources = sourceResult.results || [];
   const feedsBySource = new Map();
@@ -6263,6 +6410,11 @@ async function currentTickerItems(env) {
       items.push({ ...base, itemId: `${source.source_id}:current`, recordType: "system", kind: "reference-time", label: "Utopian Reference Time · Synchronizing", href: null });
     } else if (source.source_key === "transparency-ledger") {
       items.push({ ...base, itemId: `${source.source_id}:current`, recordType: "system", kind: "ledger", label: tickerPrefixedLabel(source.prefix, `Public record · Transparency Ledger operational · Sequence ${Number(ledgerRow?.sequence || 0)}`), href: source.credit_url || "/transparency-ledger" });
+    } else if (source.source_key === "immigration-assessments") {
+      const label = assessmentMetrics.completed < PUBLIC_ASSESSMENT_OUTCOME_THRESHOLD
+        ? `Immigration assessments: ${assessmentMetrics.started.toLocaleString("en-US")} started · outcomes withheld below ${PUBLIC_ASSESSMENT_OUTCOME_THRESHOLD} completions`
+        : `Immigration assessments: ${assessmentMetrics.started.toLocaleString("en-US")} started · ${assessmentMetrics.completed.toLocaleString("en-US")} completed · ${assessmentMetrics.metStandard.toLocaleString("en-US")} met the standard · ${assessmentMetrics.incomplete.toLocaleString("en-US")} incomplete`;
+      items.push({ ...base, itemId: `${source.source_id}:current`, recordType: "system", kind: "assessment", label: tickerPrefixedLabel(source.prefix, label), href: source.credit_url || "/circles/immigration" });
     } else {
       const sourceFeeds = feedsBySource.get(source.source_id) || [];
       for (const feed of source.source_key === "south-pacific-weather" ? sourceFeeds : sourceFeeds.slice(0, Number(source.item_limit))) {
@@ -6278,6 +6430,56 @@ async function currentTickerItems(env) {
     }
   }
   return items.sort((left, right) => right.priority - left.priority || left.sortOrder - right.sortOrder || left.label.localeCompare(right.label));
+}
+
+async function syncAssessmentTransparencySummary(env, now = new Date()) {
+  if (now.getUTCDay() !== 1 || now.getUTCHours() < 3) {
+    return { synchronized: false, reason: "outside-weekly-window" };
+  }
+  const weekEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const weekStart = new Date(weekEnd.getTime() - 7 * DAY_IN_MS);
+  const periodKey = weekStart.toISOString().slice(0, 10);
+  const existing = await entryByEventKey(env, `immigration-assessment-summary:${periodKey}`);
+  if (existing) return { synchronized: false, reason: "already-recorded", periodKey };
+
+  const row = await env.DB.prepare(`
+    SELECT
+      COUNT(*) AS started,
+      SUM(CASE WHEN status IN ('passed', 'not_passed', 'issued') THEN 1 ELSE 0 END) AS completed,
+      SUM(CASE WHEN status IN ('passed', 'issued') THEN 1 ELSE 0 END) AS met_standard,
+      SUM(CASE WHEN status = 'not_passed' THEN 1 ELSE 0 END) AS not_passed,
+      SUM(CASE WHEN status = 'expired' OR (status = 'started' AND expires_at <= ?3) THEN 1 ELSE 0 END) AS incomplete
+    FROM assessment_attempts
+    WHERE purpose = 'naturalization' AND started_at >= ?1 AND started_at < ?2
+  `).bind(weekStart.toISOString(), weekEnd.toISOString(), now.toISOString()).first();
+  const metrics = publicAssessmentMetric(row);
+  if (metrics.started === 0) return { synchronized: false, reason: "no-activity", periodKey };
+
+  const periodLabel = `${formatGregorianDate(weekStart)} through ${formatGregorianDate(new Date(weekEnd.getTime() - DAY_IN_MS))}`;
+  const outcomeCountsPublic = metrics.completed >= PUBLIC_ASSESSMENT_OUTCOME_THRESHOLD;
+  const summary = outcomeCountsPublic
+    ? `${metrics.started} naturalization assessment attempts began during ${periodLabel}; ${metrics.completed} were completed, ${metrics.metStandard} met the civic comprehension standard, ${metrics.notPassed} did not meet it, and ${metrics.incomplete} expired incomplete.`
+    : `${metrics.started} naturalization assessment attempt${metrics.started === 1 ? "" : "s"} began during ${periodLabel}. Outcome totals are withheld until at least ${PUBLIC_ASSESSMENT_OUTCOME_THRESHOLD} completions protect the privacy of the early sample.`;
+  const metadata = outcomeCountsPublic
+    ? { periodStart: weekStart.toISOString(), periodEnd: weekEnd.toISOString(), privacyThreshold: PUBLIC_ASSESSMENT_OUTCOME_THRESHOLD, ...metrics }
+    : { periodStart: weekStart.toISOString(), periodEnd: weekEnd.toISOString(), privacyThreshold: PUBLIC_ASSESSMENT_OUTCOME_THRESHOLD, started: metrics.started, outcomeCounts: "withheld" };
+  const entry = await appendLedgerEntry(env, {
+    eventKey: `immigration-assessment-summary:${periodKey}`,
+    eventType: "immigration_assessment_summary",
+    category: "immigration",
+    title: "Weekly immigration assessment activity",
+    summary,
+    actorName: "Utopian Society Civic Platform",
+    subjectName: "Immigration Civic Assessment",
+    subjectRef: `immigration-assessments:${periodKey}`,
+    occurredAt: now.toISOString(),
+    utopianDate: formatUtopianDate(now),
+    gregorianDate: formatGregorianDate(now),
+    sourceLabel: "Civic assessment aggregate · automated weekly summary",
+    sourceUrl: `${String(env.PUBLIC_SITE_ORIGIN || "https://utopiansocietycorpus.org").replace(/\/$/, "")}/circles/immigration`,
+    metadata,
+  });
+  return { synchronized: true, periodKey, sequence: entry.sequence };
 }
 
 async function publicTicker(request, env) {
@@ -6558,7 +6760,8 @@ async function route(request, env) {
   }
 
   if (request.method === "POST" && path === "/v2/immigration/assessment/start") {
-    const assessment = await startAssessment(request, env);
+    const body = await readJson(request);
+    const assessment = await startAssessment(request, env, body);
     return json(request, assessment, { status: 201, headers: { "Cache-Control": "no-store" } });
   }
 
@@ -6853,6 +7056,7 @@ const civicLedgerWorker = {
         syncReleaseInbox(env),
         syncWordpressArchive(env),
         syncTickerSources(env),
+        syncAssessmentTransparencySummary(env),
       ]);
       for (const result of results) {
         if (result.status === "rejected") {

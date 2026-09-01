@@ -690,7 +690,30 @@ export type EditorialAnalytics = {
   sources: Array<{ source_group: string; source_detail: string; views: number }>;
   paths: Array<{ path: string; views: number }>;
   daily: Array<{ day_utc: string; views: number }>;
+  immigration: {
+    generatedAt: string;
+    naturalization: ImmigrationAssessmentPeriods;
+    practice: ImmigrationAssessmentPeriods;
+    citizens: { total: number; active: number };
+    privacy: string;
+  };
   privacy: string;
+};
+
+export type ImmigrationAssessmentMetrics = {
+  started: number;
+  inProgress: number;
+  completed: number;
+  metStandard: number;
+  notPassed: number;
+  incomplete: number;
+  certificatesIssued: number;
+};
+
+export type ImmigrationAssessmentPeriods = {
+  lifetime: ImmigrationAssessmentMetrics;
+  last30Days: ImmigrationAssessmentMetrics;
+  last7Days: ImmigrationAssessmentMetrics;
 };
 
 export type SynchronizedPublication = EditorialPublication;
@@ -1315,41 +1338,27 @@ export async function issueNaturalizationCertificate(input: {
   issuanceKey: string;
   turnstileToken?: string;
 }) {
-  const response = await fetch(`${civicLedgerApi()}/v1/immigration/issue-certificate`, {
+  return civicRequest<CertificateIssuance>("/v1/immigration/issue-certificate", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
-    cache: "no-store",
   });
-  const result = await response.json() as CertificateIssuance & { error?: string };
-  if (!response.ok) throw new Error(result.error || "The civic record could not issue this certificate.");
-  return result;
 }
 
-export async function startImmigrationAssessment() {
-  const response = await fetch(`${civicLedgerApi()}/v2/immigration/assessment/start`, {
+export function startImmigrationAssessment(purpose: "naturalization" | "practice" = "naturalization") {
+  return civicRequest<import("./immigration-assessment").ImmigrationAssessmentAttempt>("/v2/immigration/assessment/start", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-    cache: "no-store",
-  });
-  const result = await response.json() as import("./immigration-assessment").ImmigrationAssessmentAttempt & { error?: string };
-  if (!response.ok) throw new Error(result.error || "The civic server could not prepare an assessment.");
-  return result;
+    body: JSON.stringify({ purpose }),
+  }, purpose === "practice");
 }
 
-export async function scoreImmigrationAssessment(input: {
+export function scoreImmigrationAssessment(input: {
   attemptId: string;
   answers: Array<{ questionId: string; optionIndex: number }>;
   easterResponse: string;
+  purpose?: "naturalization" | "practice";
 }) {
-  const response = await fetch(`${civicLedgerApi()}/v2/immigration/assessment/score`, {
+  return civicRequest<import("./immigration-assessment").ImmigrationAssessmentResult>("/v2/immigration/assessment/score", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
-    cache: "no-store",
-  });
-  const result = await response.json() as import("./immigration-assessment").ImmigrationAssessmentResult & { error?: string };
-  if (!response.ok) throw new Error(result.error || "The civic server could not score this assessment.");
-  return result;
+  }, input.purpose === "practice");
 }
