@@ -1,0 +1,43 @@
+{
+  "releaseKey": "site-release:2026-09-01:immigration-assessment-integrity-and-insights",
+  "entries": [
+    {
+      "eventKey": "site-release:99aea81:immigration-assessment-integrity-and-insights",
+      "eventType": "platform_release",
+      "category": "platform",
+      "title": "Immigration assessment integrity and visibility strengthened",
+      "summary": "Dynamic naturalization now provisions the complete civic profile and account relationship atomically and enforces one certificate per passed attempt. Certified citizens can use an authenticated, non-issuing practice assessment that cannot change the population. The Founder receives exact aggregate assessment analytics, while the civic wire and periodic Transparency Ledger summaries apply a five-completion privacy threshold to outcome counts. Individual answers, contact fields, and attempt identities remain private. All 82 release tests passed before publication.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "Immigration Civic Assessment",
+      "subjectRef": "release:v4-immigration-assessment-integrity-and-insights",
+      "occurredAt": "2026-09-01T00:51:59.234Z",
+      "utopianDate": "Emoday, Aura 26, Utopian Year 1",
+      "gregorianDate": "September 1, 2026",
+      "sourceLabel": "The Utopian Society Immigration portal",
+      "sourceUrl": "https://utopiansocietycorpus.org/circles/immigration",
+      "metadata": {
+        "version": "4.4.0",
+        "implementationCommit": "99aea81340bb104f042a6083182e8b4d8799f038",
+        "workerVersion": "37a06146-d1c8-44ef-b935-b8a67efdb470",
+        "sitesVersion": 41,
+        "sitesDeployment": "appgdep_6a96219cbd30819188dac87b634094fc",
+        "releaseTests": 82,
+        "databaseMigration": "0022_v4_immigration_assessment_integrity.sql",
+        "databaseBackupCreated": true,
+        "publicOutcomeThreshold": 5,
+        "populationBefore": 1,
+        "populationAfter": 1,
+        "changes": [
+          "Repaired dynamic certificate issuance so the civic profile, credit account, login account, and citizen record are created in a valid dependency order",
+          "Enforced one passed naturalization attempt per certificate while preserving safe idempotent retries",
+          "Added an authenticated practice assessment for certified citizens that cannot issue a certificate or change population",
+          "Added exact lifetime, 30-day, and 7-day Immigration assessment aggregates to the Founder-authorized Editorial Studio analytics",
+          "Added a privacy-thresholded assessment activity item to the public civic wire",
+          "Added idempotent periodic aggregate Immigration assessment summaries to the Transparency Ledger",
+          "Kept individual attempts, answers, contact information, and identities out of the public ledger",
+          "Preserved the existing single-citizen population during migration and deployment"
+        ]
+      }
+    }
+  ]
+}
