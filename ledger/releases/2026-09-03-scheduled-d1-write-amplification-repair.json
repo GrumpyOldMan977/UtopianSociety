@@ -1,0 +1,40 @@
+{
+  "releaseKey": "site-release:2026-09-03:scheduled-d1-write-amplification-repair",
+  "entries": [
+    {
+      "eventKey": "site-release:73cb4e6:scheduled-d1-write-amplification-repair",
+      "eventType": "platform_release",
+      "category": "platform",
+      "title": "Scheduled database write amplification repaired",
+      "summary": "Scheduled WordPress archive and civic-wire refreshes now treat unchanged records as no-ops instead of repeatedly rewriting retained data. WordPress synchronization writes only changed or removed publications, while RSS and weather refreshes deactivate only current items that have actually left a source and update retained items only when their public content changes. The Learning portal now identifies its 9,000-unit display as a separate Workers AI allowance and explicitly states that it does not measure D1 database operations. Existing publications, ticker history, civic records, and the certified-citizen population were preserved. All 83 release tests passed before publication.",
+      "actorName": "Utopian Society Civic Platform",
+      "subjectName": "Scheduled Data Synchronization",
+      "subjectRef": "release:v4-scheduled-d1-write-amplification-repair",
+      "occurredAt": "2026-09-03T00:35:05.174Z",
+      "utopianDate": "Spiraday, Aura 28, Utopian Year 1",
+      "gregorianDate": "September 3, 2026",
+      "sourceLabel": "The Utopian Society civic platform",
+      "sourceUrl": "https://utopiansocietycorpus.org",
+      "metadata": {
+        "version": "4.4.1",
+        "implementationCommit": "73cb4e6870a9e4c318004fbbe53390cc1a2a07ba",
+        "workerVersion": "69033435-87ee-4f0f-a81e-581818c71b79",
+        "sitesVersion": 42,
+        "sitesDeployment": "appgdep_6a98c0a76360819192c2da2e97f855c9",
+        "releaseTests": 83,
+        "lintErrors": 0,
+        "databaseMigration": false,
+        "databaseBackupCreated": true,
+        "wordpressHealthWriteIntervalHours": 6,
+        "changes": [
+          "Stopped unchanged WordPress synchronization cycles from deleting and recreating the complete retained publication archive",
+          "Limited WordPress database writes to changed publications, removed publications, and low-frequency synchronization health markers",
+          "Limited RSS deactivation to currently displayed items that are absent from the latest source response",
+          "Prevented unchanged retained RSS and weather items from receiving redundant updates",
+          "Clarified that the 9,000-unit Learning display measures the separate Workers AI protective allowance rather than D1 operations",
+          "Preserved publication content, ticker history, civic records, server-side authorization, and the certified-citizen population"
+        ]
+      }
+    }
+  ]
+}
