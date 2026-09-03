@@ -614,7 +614,7 @@ export function CitizenPortal() {
           <span className="eyebrow">Automated Assessment</span><h2>Evidence, Ten Qs, and lifelong direction</h2>
           <div className="ai-fuel" data-available={learningAutomationEnabled}>
             <div>
-              <strong>Portal AI allowance</strong>
+              <strong>Workers AI daily allowance</strong>
               <span>{displayNumber(snapshot.aiAllowance.used)} of {displayNumber(snapshot.aiAllowance.protectiveLimit)} protective units used</span>
             </div>
             <div
@@ -628,7 +628,7 @@ export function CitizenPortal() {
               <span style={{ width: `${snapshot.aiAllowance.percentUsed}%` }} />
             </div>
             <small>
-              {displayNumber(snapshot.aiAllowance.protectiveRemaining)} protected units remain · resets daily at 00:00 UTC.
+              {displayNumber(snapshot.aiAllowance.protectiveRemaining)} protected AI units remain · resets daily at 00:00 UTC.
               {" "}{snapshot.aiAllowance.scopeNote}
             </small>
           </div>

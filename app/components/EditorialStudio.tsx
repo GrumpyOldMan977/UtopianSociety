@@ -405,7 +405,13 @@ export function EditorialStudio() {
     try {
       const result = await synchronizeWordpressPublications();
       await refresh();
-      setFeedback({ scope: "archive", kind: "success", message: `${result.synchronized} published WordPress posts synchronized read-only. No WordPress content was changed.` });
+      setFeedback({
+        scope: "archive",
+        kind: "success",
+        message: result.unchanged
+          ? `${result.retained} published WordPress posts checked; the retained archive was already current. No WordPress content was changed.`
+          : `${result.synchronized} changed WordPress post${result.synchronized === 1 ? "" : "s"} synchronized read-only${result.removed ? `; ${result.removed} removed from the retained archive` : ""}. No WordPress content was changed.`,
+      });
     } catch (reason) { setFeedback({ scope: "archive", kind: "error", message: reason instanceof Error ? reason.message : "The WordPress archive could not be synchronized." }); }
     finally { setBusy(""); }
   }

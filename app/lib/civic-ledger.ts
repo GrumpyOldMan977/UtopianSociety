@@ -1183,7 +1183,16 @@ export function getLocalWordpressHandoff() {
 }
 
 export function synchronizeWordpressPublications() {
-  return civicRequest<{ synchronized: number; synchronizedAt: string; newest: string; remoteWrites: false }>(
+  return civicRequest<{
+    synchronized: number;
+    removed?: number;
+    retained: number;
+    synchronizedAt: string;
+    checkedAt: string;
+    newest: string;
+    unchanged: boolean;
+    remoteWrites: false;
+  }>(
     "/v3/editorial/sync-wordpress",
     { method: "POST", body: "{}" },
     true,

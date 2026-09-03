@@ -58,3 +58,26 @@ test("the public civic wire renders the Worker-managed rotation", async () => {
   assert.doesNotMatch(ticker, /OpenAI Build Week judging complete/);
   assert.doesNotMatch(ticker, /Public site frozen for review/i);
 });
+
+test("scheduled synchronizers avoid rewriting unchanged D1 records", async () => {
+  const worker = await source("cloudflare/civic-ledger/src/index.js");
+  const portal = await source("app/components/CitizenPortal.tsx");
+  const wordpress = worker.slice(
+    worker.indexOf("async function syncWordpressArchive"),
+    worker.indexOf("async function listPublications"),
+  );
+  const feeds = worker.slice(
+    worker.indexOf("async function storeTickerSourceItems"),
+    worker.indexOf("async function refreshTickerWeatherLocation"),
+  );
+
+  assert.doesNotMatch(wordpress, /DELETE FROM publications WHERE wordpress_id IS NOT NULL/);
+  assert.match(wordpress, /wordpress-publications-unchanged/);
+  assert.match(wordpress, /changedPosts\.length === 0 && removedIds\.length === 0/);
+  assert.match(wordpress, /ON CONFLICT\(publication_id\) DO UPDATE SET/);
+  assert.match(feeds, /WHERE source_id = \?1 AND is_current = 1/);
+  assert.match(feeds, /item_key NOT IN/);
+  assert.match(feeds, /WHERE ticker_feed_items\.label IS NOT excluded\.label/);
+  assert.match(portal, /Workers AI daily allowance/);
+  assert.match(worker, /does not measure D1 database operations/);
+});

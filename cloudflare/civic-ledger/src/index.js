@@ -2269,7 +2269,7 @@ async function aiAllowanceStatus(env, date = new Date()) {
     requestCount: Number(row?.request_count || 0),
     conversionCount: Number(row?.conversion_count || 0),
     resetAt: aiResetAt(date),
-    scopeNote: "Estimated Learning and portrait use recorded by this Worker; other Cloudflare AI use is not visible here.",
+    scopeNote: "This separate Workers AI allowance covers Learning and portrait generation only; it does not measure D1 database operations.",
   };
 }
 
@@ -5244,6 +5244,7 @@ function publicPublication(row) {
 
 const DEFAULT_WORDPRESS_ORIGIN = "https://utopiansocietycorpus.wpcomstaging.com";
 const DEFAULT_PUBLIC_SITE_ORIGIN = "https://utopiansocietycorpus.org";
+const WORDPRESS_SYNC_HEALTH_INTERVAL_MS = DAY_IN_MS / 4;
 
 function decodeWordpressText(value) {
   return String(value || "")
@@ -5357,11 +5358,6 @@ async function markWordpressSync(env, values) {
 
 async function syncWordpressArchive(env) {
   const attemptedAt = new Date().toISOString();
-  await markWordpressSync(env, {
-    attemptedAt,
-    status: "running",
-    message: "Reading published material from the WordPress editorial origin.",
-  });
   try {
     const first = await fetchWordpressPage(env, 1);
     const sourcePosts = [...first.posts];
@@ -5371,8 +5367,70 @@ async function syncWordpressArchive(env) {
     if (sourcePosts.length < 1) throw new Error("WordPress returned no published posts; the last-known-good archive was retained.");
     const synchronizedAt = new Date().toISOString();
     const posts = sourcePosts.map((post) => normalizeWordpressPost(post, env, synchronizedAt));
-    const statements = [env.DB.prepare("DELETE FROM publications WHERE wordpress_id IS NOT NULL")];
-    for (const post of posts) {
+    const [existingResult, syncState] = await Promise.all([
+      env.DB.prepare(`
+        SELECT wordpress_id, slug, source_modified_at
+        FROM publications
+        WHERE wordpress_id IS NOT NULL
+        ORDER BY wordpress_id
+      `).all(),
+      env.DB.prepare(`
+        SELECT cursor_value, last_success_at, last_attempt_at, status, message
+        FROM editorial_sync_state
+        WHERE source_key = 'wordpress-live-bridge'
+        LIMIT 1
+      `).first(),
+    ]);
+    const existingRows = existingResult.results || [];
+    const existingById = new Map(existingRows.map((row) => [Number(row.wordpress_id), row]));
+    const incomingIds = new Set(posts.map((post) => post.wordpressId));
+    const changedPosts = posts.filter((post) => {
+      const existing = existingById.get(post.wordpressId);
+      return !existing
+        || existing.slug !== post.slug
+        || (existing.source_modified_at || null) !== (post.sourceModifiedAt || null);
+    });
+    const removedIds = existingRows
+      .map((row) => Number(row.wordpress_id))
+      .filter((wordpressId) => !incomingIds.has(wordpressId));
+    const newest = posts.map((post) => post.sourceModifiedAt || "").sort().at(-1) || synchronizedAt;
+    const unchanged = changedPosts.length === 0 && removedIds.length === 0;
+    if (unchanged) {
+      const lastAttempt = Date.parse(syncState?.last_attempt_at || "");
+      const healthWriteDue = syncState?.status !== "succeeded"
+        || !Number.isFinite(lastAttempt)
+        || Date.now() - lastAttempt >= WORDPRESS_SYNC_HEALTH_INTERVAL_MS;
+      if (healthWriteDue) {
+        await markWordpressSync(env, {
+          attemptedAt,
+          cursor: newest,
+          succeededAt: attemptedAt,
+          status: "succeeded",
+          message: `${posts.length} published WordPress posts checked; the retained archive was already current.`,
+        });
+      }
+      console.log(JSON.stringify({
+        level: "info",
+        message: "wordpress-publications-unchanged",
+        retained: posts.length,
+        healthWriteDue,
+        newest,
+      }));
+      return {
+        synchronized: 0,
+        retained: posts.length,
+        synchronizedAt: syncState?.last_success_at || synchronizedAt,
+        checkedAt: attemptedAt,
+        newest,
+        unchanged: true,
+        remoteWrites: false,
+      };
+    }
+
+    const statements = removedIds.map((wordpressId) => env.DB.prepare(
+      "DELETE FROM publications WHERE wordpress_id = ?1",
+    ).bind(wordpressId));
+    for (const post of changedPosts) {
       statements.push(env.DB.prepare(`
         INSERT INTO publications (
           publication_id, wordpress_id, slug, publication_type, title, status,
@@ -5384,6 +5442,28 @@ async function syncWordpressArchive(env) {
           ?1, ?2, ?3, 'post', ?4, 'published', ?5, ?6, ?7, ?8,
           ?9, '', ?10, ?11, ?12, ?13, ?14, ?7, ?7, ?15, ?16, ?17, ?18
         )
+        ON CONFLICT(publication_id) DO UPDATE SET
+          wordpress_id = excluded.wordpress_id,
+          slug = excluded.slug,
+          publication_type = excluded.publication_type,
+          title = excluded.title,
+          status = excluded.status,
+          canonical_url = excluded.canonical_url,
+          source_modified_at = excluded.source_modified_at,
+          synchronized_at = excluded.synchronized_at,
+          metadata_json = excluded.metadata_json,
+          excerpt = excluded.excerpt,
+          content_markdown = excluded.content_markdown,
+          featured_image = excluded.featured_image,
+          author_name = excluded.author_name,
+          publication_date = excluded.publication_date,
+          utopian_date = excluded.utopian_date,
+          gregorian_date = excluded.gregorian_date,
+          updated_at = excluded.updated_at,
+          content_html = excluded.content_html,
+          source_url = excluded.source_url,
+          reading_minutes = excluded.reading_minutes,
+          word_count = excluded.word_count
       `).bind(
         post.publicationId, post.wordpressId, post.slug, post.title, post.canonicalUrl,
         post.sourceModifiedAt, post.synchronizedAt, JSON.stringify({
@@ -5398,7 +5478,6 @@ async function syncWordpressArchive(env) {
         post.readingMinutes, post.wordCount,
       ));
     }
-    const newest = posts.map((post) => post.sourceModifiedAt || "").sort().at(-1) || synchronizedAt;
     statements.push(env.DB.prepare(`
       UPDATE editorial_sync_state
       SET cursor_value = ?1, last_success_at = ?2, last_attempt_at = ?2,
@@ -5406,8 +5485,24 @@ async function syncWordpressArchive(env) {
       WHERE source_key = 'wordpress-live-bridge'
     `).bind(newest, synchronizedAt, `${posts.length} published WordPress posts synchronized read-only.`));
     await env.DB.batch(statements);
-    console.log(JSON.stringify({ level: "info", message: "wordpress-publications-synchronized", count: posts.length, newest }));
-    return { synchronized: posts.length, synchronizedAt, newest, remoteWrites: false };
+    console.log(JSON.stringify({
+      level: "info",
+      message: "wordpress-publications-synchronized",
+      changed: changedPosts.length,
+      removed: removedIds.length,
+      retained: posts.length,
+      newest,
+    }));
+    return {
+      synchronized: changedPosts.length,
+      removed: removedIds.length,
+      retained: posts.length,
+      synchronizedAt,
+      checkedAt: attemptedAt,
+      newest,
+      unchanged: false,
+      remoteWrites: false,
+    };
   } catch (error) {
     await markWordpressSync(env, {
       attemptedAt,
@@ -6214,12 +6309,22 @@ async function fetchTickerSourceItems(source) {
 
 async function storeTickerSourceItems(env, source, items) {
   const now = new Date().toISOString();
-  const statements = [
-    env.DB.prepare("UPDATE ticker_feed_items SET is_current = 0 WHERE source_id = ?1").bind(source.source_id),
-  ];
-  for (const item of items) {
+  const preparedItems = await Promise.all(items.map(async (item) => {
     const itemKey = await digest(`${source.source_id}\n${item.identity}`);
-    const itemId = `TIF-${itemKey.slice(0, 32)}`;
+    return { ...item, itemKey, itemId: `TIF-${itemKey.slice(0, 32)}` };
+  }));
+  const itemKeys = preparedItems.map((item) => item.itemKey);
+  const statements = [itemKeys.length > 0
+    ? env.DB.prepare(`
+        UPDATE ticker_feed_items SET is_current = 0
+        WHERE source_id = ?1 AND is_current = 1
+          AND item_key NOT IN (${itemKeys.map((_key, index) => `?${index + 2}`).join(", ")})
+      `).bind(source.source_id, ...itemKeys)
+    : env.DB.prepare(`
+        UPDATE ticker_feed_items SET is_current = 0
+        WHERE source_id = ?1 AND is_current = 1
+      `).bind(source.source_id)];
+  for (const item of preparedItems) {
     statements.push(env.DB.prepare(`
       INSERT INTO ticker_feed_items (
         item_id, source_id, item_key, label, href, published_at, fetched_at, is_current
@@ -6227,7 +6332,11 @@ async function storeTickerSourceItems(env, source, items) {
       ON CONFLICT(item_key) DO UPDATE SET
         label = excluded.label, href = excluded.href, published_at = excluded.published_at,
         fetched_at = excluded.fetched_at, is_current = 1
-    `).bind(itemId, source.source_id, itemKey, item.label, item.href, item.publishedAt, now));
+      WHERE ticker_feed_items.label IS NOT excluded.label
+         OR ticker_feed_items.href IS NOT excluded.href
+         OR ticker_feed_items.published_at IS NOT excluded.published_at
+         OR ticker_feed_items.is_current <> 1
+    `).bind(item.itemId, source.source_id, item.itemKey, item.label, item.href, item.publishedAt, now));
   }
   statements.push(env.DB.prepare(`
     UPDATE ticker_sources SET last_checked_at = ?2, last_success_at = ?2,
@@ -6240,15 +6349,28 @@ async function storeTickerSourceItems(env, source, items) {
 
 async function storeTickerWeatherItems(env, location, items) {
   const now = new Date().toISOString();
-  const statements = [
-    env.DB.prepare(`
-      UPDATE ticker_feed_items SET is_current = 0
-      WHERE weather_location_id = ?1 OR (source_id = 'TIS-WEATHER' AND weather_location_id IS NULL)
-    `).bind(location.location_id),
-  ];
-  for (const item of items) {
+  const preparedItems = await Promise.all(items.map(async (item) => {
     const itemKey = await digest(`TIS-WEATHER\n${location.location_id}\n${item.identity}`);
-    const itemId = `TIF-${itemKey.slice(0, 32)}`;
+    return { ...item, itemKey, itemId: `TIF-${itemKey.slice(0, 32)}` };
+  }));
+  const itemKeys = preparedItems.map((item) => item.itemKey);
+  const statements = [itemKeys.length > 0
+    ? env.DB.prepare(`
+        UPDATE ticker_feed_items SET is_current = 0
+        WHERE is_current = 1 AND (
+          (weather_location_id = ?1
+            AND item_key NOT IN (${itemKeys.map((_key, index) => `?${index + 2}`).join(", ")}))
+          OR (source_id = 'TIS-WEATHER' AND weather_location_id IS NULL)
+        )
+      `).bind(location.location_id, ...itemKeys)
+    : env.DB.prepare(`
+        UPDATE ticker_feed_items SET is_current = 0
+        WHERE is_current = 1 AND (
+          weather_location_id = ?1
+          OR (source_id = 'TIS-WEATHER' AND weather_location_id IS NULL)
+        )
+      `).bind(location.location_id)];
+  for (const item of preparedItems) {
     statements.push(env.DB.prepare(`
       INSERT INTO ticker_feed_items (
         item_id, source_id, item_key, label, href, published_at, fetched_at, is_current, weather_location_id
@@ -6256,7 +6378,11 @@ async function storeTickerWeatherItems(env, location, items) {
       ON CONFLICT(item_key) DO UPDATE SET
         label = excluded.label, href = excluded.href, published_at = excluded.published_at,
         fetched_at = excluded.fetched_at, is_current = 1, weather_location_id = excluded.weather_location_id
-    `).bind(itemId, itemKey, item.label, item.href, item.publishedAt, now, location.location_id));
+      WHERE ticker_feed_items.label IS NOT excluded.label
+         OR ticker_feed_items.href IS NOT excluded.href
+         OR ticker_feed_items.is_current <> 1
+         OR ticker_feed_items.weather_location_id IS NOT excluded.weather_location_id
+    `).bind(item.itemId, item.itemKey, item.label, item.href, item.publishedAt, now, location.location_id));
   }
   statements.push(env.DB.prepare(`
     UPDATE ticker_weather_locations SET last_checked_at = ?2, last_success_at = ?2,
